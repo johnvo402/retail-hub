@@ -1,0 +1,15 @@
+package com.johnvo.retailhub.domain.ordering;
+
+import java.util.Objects;
+import java.util.UUID;
+
+public record OrderId(UUID value) {
+    public OrderId {
+        Objects.requireNonNull(value, "Order id is required");
+    }
+
+    public static OrderId newId() {
+        return new OrderId(UUID.randomUUID());
+    }
+}
+
