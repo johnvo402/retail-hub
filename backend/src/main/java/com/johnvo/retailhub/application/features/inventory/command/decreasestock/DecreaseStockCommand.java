@@ -5,7 +5,6 @@ import com.johnvo.retailhub.application.features.inventory.common.StockAdjustmen
 
 import java.util.UUID;
 
-public record DecreaseStockCommand(UUID productId, int quantity)
+public record DecreaseStockCommand(UUID productId, int quantity, UUID actorId, String reason)
         implements Command<StockAdjustmentResult> {
 }
-

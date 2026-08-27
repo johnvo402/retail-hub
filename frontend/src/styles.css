@@ -216,7 +216,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .table-row > span { min-width: 0; font-size: .8rem; }
 .table-row > span:first-child { display: grid; gap: 3px; }
 .table-row small { color: var(--muted-text); }
-.inventory-table .table-row { grid-template-columns: minmax(190px, 1.3fr) .5fr .45fr .9fr minmax(230px, 1.3fr); }
+.inventory-table .table-row { grid-template-columns: minmax(180px, 1fr) .4fr .4fr .75fr minmax(390px, 1.6fr); }
+.inventory-table-readonly .table-row { grid-template-columns: minmax(220px, 1.4fr) .5fr .45fr .9fr; }
 .order-table .table-row { grid-template-columns: minmax(210px, 1.3fr) .65fr .4fr .6fr .9fr; }
 .category-table .table-row { grid-template-columns: minmax(160px, .8fr) minmax(240px, 1.5fr) .45fr minmax(220px, .8fr); }
 .category-description { color: var(--muted-text); overflow-wrap: anywhere; }
@@ -226,9 +227,36 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .table-link:hover { background: var(--background); }
 .quantity { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 .quantity-low { color: var(--warning); }
-.stock-actions, .stock-editor { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.stock-editor input { width: 62px; min-height: 36px; padding: 6px 8px; }
-.stock-error { flex-basis: 100%; }
+.inventory-product-link { display: grid; width: fit-content; gap: 3px; border-radius: 5px; transition: color var(--transition); }
+.inventory-product-link:hover { color: var(--accent); }
+.stock-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.stock-button { min-height: 44px; padding: 8px 12px; font-size: .78rem; }
+.stock-editor { display: grid; width: 100%; grid-template-columns: 86px minmax(160px, 1fr) auto auto; gap: 8px; align-items: end; }
+.stock-editor-field { display: grid; min-width: 0; gap: 5px; }
+.stock-editor-field span { color: var(--primary-dark); font-size: .7rem; font-weight: 600; }
+.stock-editor input { min-height: 44px; padding: 8px 10px; }
+.stock-error { grid-column: 1 / -1; }
+
+.inventory-detail-header { align-items: center; }
+.current-stock { display: grid; min-width: 180px; justify-items: end; padding-left: 26px; border-left: 1px solid var(--border); }
+.current-stock span, .current-stock small { color: var(--muted-text); font-size: .72rem; }
+.current-stock strong { color: var(--accent); font-size: 2.6rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.inventory-adjustment .panel-heading { margin-bottom: 18px; }
+.inventory-adjustment .stock-editor { max-width: 920px; }
+.movement-history > .panel-heading > svg { color: var(--secondary); }
+.movement-list { display: grid; }
+.movement-row { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 18px; padding: 18px 0; border-top: 1px solid var(--border); }
+.movement-delta { display: flex; min-height: 52px; align-items: center; justify-content: center; gap: 6px; align-self: start; border-radius: 9px; font-variant-numeric: tabular-nums; }
+.movement-positive { color: #065f46; background: var(--accent-soft); }
+.movement-negative { color: #991b1b; background: var(--danger-soft); }
+.movement-copy { min-width: 0; }
+.movement-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.movement-heading h3 { margin: 0; color: var(--primary-dark); font-size: .92rem; }
+.movement-heading time { color: var(--muted-text); font-size: .72rem; white-space: nowrap; }
+.movement-balance { display: flex; align-items: center; gap: 7px; margin-top: 7px; color: var(--secondary); font-size: .82rem; }
+.movement-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 9px; color: var(--muted-text); font-size: .74rem; }
+.movement-reason { margin: 9px 0 0; color: var(--secondary); font-size: .78rem; overflow-wrap: anywhere; }
+.movement-history .pagination { margin-top: 18px; }
 
 .order-heading h1 { margin: 0; }
 .heading-with-status { justify-content: flex-start; margin: 10px 0; }
@@ -270,7 +298,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 @media (max-width: 1180px) {
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .product-grid { grid-template-columns: repeat(2, 1fr); }
-  .inventory-table .table-row { grid-template-columns: minmax(170px, 1fr) .4fr .4fr minmax(220px, 1fr); }
+  .inventory-table .table-row { grid-template-columns: minmax(170px, 1fr) .4fr .4fr minmax(360px, 1.5fr); }
+  .inventory-table-readonly .table-row { grid-template-columns: minmax(190px, 1.3fr) .4fr .4fr; }
   .inventory-table .table-row > span:nth-child(4), .inventory-table .table-head > span:nth-child(4) { display: none; }
 }
 
@@ -297,6 +326,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 @media (max-width: 700px) {
   h1 { font-size: 1.75rem; }
   .page-header, .detail-header, .add-item-panel { align-items: stretch; flex-direction: column; }
+  .current-stock { min-width: 0; justify-items: start; padding: 18px 0 0; border-top: 1px solid var(--border); border-left: 0; }
   .page-actions .button { flex: 1; }
   .metric-grid, .product-grid, .form-grid, .detail-grid, .order-meta { grid-template-columns: 1fr; }
   .metric-card { min-height: 94px; }
@@ -322,8 +352,12 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .inventory-table .table-row > span:last-child { grid-column: 1 / -1; }
   .order-table .table-row > span:first-child, .order-table .table-row > span:last-child { grid-column: 1 / -1; }
   .category-table .table-row > span:nth-child(2), .category-table .table-row > span:last-child { grid-column: 1 / -1; }
-  .stock-editor { align-items: stretch; }
-  .stock-editor label, .stock-editor input { width: 100%; }
+  .stock-editor { grid-template-columns: 1fr; align-items: stretch; }
+  .stock-editor label, .stock-editor input, .stock-editor .button { width: 100%; }
+  .stock-error { grid-column: auto; }
+  .movement-row { grid-template-columns: 1fr; gap: 12px; }
+  .movement-delta { width: 88px; }
+  .movement-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
   .line-item { grid-template-columns: minmax(0, 1fr) auto 40px; }
   .line-item > .numeric:first-of-type { display: none; }
   .auth-story { min-height: 280px; padding: 28px 22px; }

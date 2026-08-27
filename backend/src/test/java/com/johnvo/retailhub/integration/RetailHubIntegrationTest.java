@@ -2,10 +2,17 @@ package com.johnvo.retailhub.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.johnvo.retailhub.application.features.inventory.command.increasestock.IncreaseStockCommand;
+import com.johnvo.retailhub.application.features.inventory.command.increasestock.IncreaseStockCommandHandler;
+import com.johnvo.retailhub.domain.catalog.ProductId;
+import com.johnvo.retailhub.domain.inventory.InventoryMovement;
+import com.johnvo.retailhub.domain.inventory.InventoryMovementType;
 import com.johnvo.retailhub.domain.ordering.OrderId;
 import com.johnvo.retailhub.domain.ordering.Order;
 import com.johnvo.retailhub.domain.ordering.OrderRepository;
 import com.johnvo.retailhub.infrastructure.persistence.jpa.inventory.InventoryJpaEntity;
+import com.johnvo.retailhub.infrastructure.persistence.jpa.inventory.InventoryMovementJpaEntity;
+import com.johnvo.retailhub.infrastructure.persistence.jpa.inventory.SpringDataInventoryMovementRepository;
 import com.johnvo.retailhub.infrastructure.persistence.jpa.ordering.OrderJpaEntity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -52,6 +59,8 @@ class RetailHubIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired StringRedisTemplate redis;
     @Autowired OrderRepository orders;
+    @Autowired IncreaseStockCommandHandler increaseStock;
+    @Autowired SpringDataInventoryMovementRepository inventoryMovements;
     @Autowired EntityManagerFactory entityManagerFactory;
 
     private final HttpClient client = HttpClient.newBuilder()
@@ -114,7 +123,7 @@ class RetailHubIntegrationTest {
         assertThat(searchResult.get("items").get(0).get("id").asText()).isEqualTo(productId.toString());
 
         HttpResponse<String> increase = post("/api/inventory/" + productId + "/increase",
-                "{\"quantity\":10}", accessToken, null);
+                "{\"quantity\":10,\"reason\":\"Initial supplier delivery\"}", accessToken, null);
         assertThat(increase.statusCode()).isEqualTo(200);
         assertThat(json(increase).get("quantity").asInt()).isEqualTo(10);
 
@@ -131,6 +140,15 @@ class RetailHubIntegrationTest {
         HttpResponse<String> confirm = post("/api/orders/" + orderId + "/confirm", "", accessToken, null);
         assertThat(confirm.statusCode()).isEqualTo(204);
         assertThat(json(get("/api/inventory/" + productId, accessToken)).get("quantity").asInt()).isEqualTo(8);
+
+        JsonNode movements = json(get("/api/inventory/" + productId + "/movements", accessToken));
+        assertThat(movements.get("totalItems").asInt()).isEqualTo(2);
+        assertThat(movements.get("items").get(0).get("type").asText()).isEqualTo("ORDER_CONFIRMATION");
+        assertThat(movements.get("items").get(0).get("quantityDelta").asInt()).isEqualTo(-2);
+        assertThat(movements.get("items").get(0).get("referenceId").asText()).isEqualTo(orderId.toString());
+        assertThat(movements.get("items").get(1).get("type").asText()).isEqualTo("MANUAL_INCREASE");
+        assertThat(movements.get("items").get(1).get("reason").asText())
+                .isEqualTo("Initial supplier delivery");
 
         JsonNode order = json(get("/api/orders/" + orderId, accessToken));
         assertThat(order.get("status").asText()).isEqualTo("CONFIRMED");
@@ -176,6 +194,13 @@ class RetailHubIntegrationTest {
         HttpResponse<String> otherLogin = post("/api/auth/login",
                 "{\"email\":\"other@retailhub.test\",\"password\":\"Integration123!\"}", null, null);
         String otherAccessToken = json(otherLogin).get("accessToken").asText();
+        assertThat(get("/api/inventory/" + productId, otherAccessToken).statusCode()).isEqualTo(200);
+        assertThat(get("/api/inventory/" + productId + "/movements", otherAccessToken).statusCode())
+                .isEqualTo(200);
+        assertThat(post("/api/inventory/" + productId + "/increase",
+                "{\"quantity\":1}", otherAccessToken, null).statusCode()).isEqualTo(403);
+        assertThat(post("/api/inventory/" + productId + "/decrease",
+                "{\"quantity\":1}", otherAccessToken, null).statusCode()).isEqualTo(403);
         assertThat(get("/api/orders/" + orderId, otherAccessToken).statusCode()).isEqualTo(403);
         assertThat(post("/api/orders/" + orderId + "/confirm", "", otherAccessToken, null).statusCode())
                 .isEqualTo(403);
@@ -285,6 +310,7 @@ class RetailHubIntegrationTest {
                 .get("id").asText());
         assertThat(post("/api/inventory/" + productId + "/increase",
                 "{\"quantity\":5}", accessToken, null).statusCode()).isEqualTo(200);
+        long movementCountBeforeConflict = inventoryMovements.countByProductId(productId);
 
         EntityManager firstManager = entityManagerFactory.createEntityManager();
         EntityManager secondManager = entityManagerFactory.createEntityManager();
@@ -296,6 +322,12 @@ class RetailHubIntegrationTest {
             long initialVersion = first.getVersion();
             first.update(4, Instant.now());
             second.update(3, Instant.now().plusSeconds(1));
+            firstManager.persist(new InventoryMovementJpaEntity(InventoryMovement.create(
+                    new ProductId(productId), InventoryMovementType.MANUAL_DECREASE, 5, 4,
+                    null, null, "First concurrent change", Instant.now())));
+            secondManager.persist(new InventoryMovementJpaEntity(InventoryMovement.create(
+                    new ProductId(productId), InventoryMovementType.MANUAL_DECREASE, 5, 3,
+                    null, null, "Conflicting concurrent change", Instant.now().plusSeconds(1))));
 
             firstManager.getTransaction().commit();
             assertThat(first.getVersion()).isGreaterThan(initialVersion);
@@ -311,6 +343,32 @@ class RetailHubIntegrationTest {
             firstManager.close();
             secondManager.close();
         }
+        assertThat(inventoryMovements.countByProductId(productId)).isEqualTo(movementCountBeforeConflict + 1);
+    }
+
+    @Test
+    void movementPersistenceFailureRollsBackStockMutation() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String accessToken = json(post("/api/auth/login",
+                "{\"email\":\"admin@retailhub.test\",\"password\":\"Integration123!\"}", null, null))
+                .get("accessToken").asText();
+        UUID categoryId = UUID.fromString(json(post("/api/categories",
+                "{\"name\":\"Movement rollback " + suffix
+                        + "\",\"description\":\"Movement transaction test\",\"active\":true}",
+                accessToken, null)).get("id").asText());
+        UUID productId = UUID.fromString(json(post("/api/products",
+                objectMapper.writeValueAsString(new ProductPayload("Movement rollback " + suffix,
+                        "Movement transaction test", "MOVE-ROLLBACK-" + suffix, BigDecimal.TEN,
+                        categoryId, true)), accessToken, null)).get("id").asText());
+        assertThat(post("/api/inventory/" + productId + "/increase",
+                "{\"quantity\":5}", accessToken, null).statusCode()).isEqualTo(200);
+        long movementCount = inventoryMovements.countByProductId(productId);
+
+        assertThatThrownBy(() -> increaseStock.handle(new IncreaseStockCommand(productId, 1,
+                UUID.randomUUID(), "Actor FK failure"))).isInstanceOf(RuntimeException.class);
+
+        assertThat(json(get("/api/inventory/" + productId, accessToken)).get("quantity").asInt()).isEqualTo(5);
+        assertThat(inventoryMovements.countByProductId(productId)).isEqualTo(movementCount);
     }
 
     private JsonNode waitForSearch(String query) throws Exception {

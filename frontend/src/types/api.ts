@@ -51,6 +51,21 @@ export interface InventoryItem {
   updatedAt: string;
 }
 
+export type InventoryMovementType = "MANUAL_INCREASE" | "MANUAL_DECREASE" | "ORDER_CONFIRMATION";
+
+export interface InventoryMovement {
+  id: string;
+  productId: string;
+  type: InventoryMovementType;
+  quantityDelta: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  actorUserId: string | null;
+  referenceId: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
 export type OrderStatus = "DRAFT" | "CONFIRMED" | "CANCELLED";
 
 export interface OrderItem {
@@ -83,4 +98,3 @@ export interface ApiProblem {
   errors?: Record<string, string[]>;
   traceId?: string;
 }
-

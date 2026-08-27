@@ -33,8 +33,8 @@ organized by use case rather than generic service/DTO directories.
   sessions, logout, logout-all, and current-user queries.
 - **Catalog** — category management, product create/update/deactivate, pageable
   filtering, Redis product detail caching, and Elasticsearch search/reindex.
-- **Inventory** — stock reads and positive adjustments with a database check and
-  Hibernate `@Version` optimistic locking.
+- **Inventory** — current stock reads, ADMIN-only manual adjustments, pageable
+  movement audit history, and Hibernate `@Version` optimistic locking.
 - **Ordering** — a DDD `Order` aggregate persisted in relational `orders` and
   `order_items` tables, command/query separation, and JPA optimistic locking.
 
@@ -219,6 +219,7 @@ Flyway runs automatically before Hibernate validation. Hibernate uses
 5. historical order read models (migrated and removed by migration 7)
 6. hashed refresh sessions
 7. relational orders/order items, projection data migration, and event-table cleanup
+8. immutable inventory movement audit records and product/time query index
 
 Run migrations by starting the backend, or package/start it with:
 
@@ -253,7 +254,8 @@ Compose syntax and resolved configuration:
 docker compose config --quiet
 ```
 
-Tests cover order and inventory invariants, Result-based application handlers,
+Tests cover order and inventory invariants, atomic inventory movement auditing,
+Result-based application handlers,
 refresh rotation, old-token rejection, cookie attributes, logout revocation,
 protected endpoints, Flyway/JPA mappings, Redis population/invalidation,
 Elasticsearch indexing/search, relational order round trips, query projections, and
@@ -266,11 +268,11 @@ JPA optimistic concurrency.
 | Auth       | `/api/auth/register`, `login`, `refresh`, `logout`, `logout-all`, `me`                        |
 | Products   | `/api/products`, `/api/products/{id}`, `/api/products/search`, `/api/products/search/reindex` |
 | Categories | `/api/categories`, `/api/categories/{id}`                                                     |
-| Inventory  | `/api/inventory`, `/api/inventory/{productId}`, `increase`, `decrease`                        |
+| Inventory  | `/api/inventory`, `/api/inventory/{productId}`, `movements`, `increase`, `decrease`           |
 | Orders     | `/api/orders`, `/api/orders/{id}`, item add/remove, `confirm`, `cancel`                       |
 
-Product/category writes require `ADMIN`; catalog reads are public; inventory and
-orders require a JWT. Errors use one Problem Details-style shape with type, title,
+Product/category writes and manual inventory adjustments require `ADMIN`; catalog
+reads are public; inventory reads and orders require a JWT. Errors use one Problem Details-style shape with type, title,
 status, detail, optional field errors, and a trace ID. Swagger is enabled by default
 for development and disabled by `application-prod.yml`.
 
@@ -292,6 +294,11 @@ origin, product cache TTL, and optional initial administrator are configurable.
 - Order confirmation atomically deducts inventory for every order item. Insufficient
   stock prevents confirmation and leaves both inventory and the order unchanged;
   stock is not reserved before confirmation.
+- Manual stock changes record the authenticated actor, while order confirmation
+  creates automatic stock-out movements linked to the order. Stock mutation and its
+  movement records share one database transaction, so neither can commit alone.
+- `inventory_items.quantity` remains the authoritative stock state.
+  `inventory_movements` is an immutable audit history and is **not Event Sourcing**.
 - Search/cache projections update synchronously. PostgreSQL remains their source of
   truth, and the admin reindex endpoint can rebuild Elasticsearch.
 - True cross-site cookie deployments require an explicit CSRF strategy and an

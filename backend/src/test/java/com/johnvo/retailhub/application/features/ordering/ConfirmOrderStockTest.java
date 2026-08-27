@@ -1,9 +1,12 @@
 package com.johnvo.retailhub.application.features.ordering;
 
 import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.features.inventory.common.InventoryMovementRepository;
 import com.johnvo.retailhub.application.features.ordering.common.OrderCommandSupport;
 import com.johnvo.retailhub.domain.catalog.ProductId;
 import com.johnvo.retailhub.domain.inventory.InventoryItem;
+import com.johnvo.retailhub.domain.inventory.InventoryMovement;
+import com.johnvo.retailhub.domain.inventory.InventoryMovementType;
 import com.johnvo.retailhub.domain.inventory.InventoryRepository;
 import com.johnvo.retailhub.domain.ordering.Order;
 import com.johnvo.retailhub.domain.ordering.OrderId;
@@ -12,12 +15,14 @@ import com.johnvo.retailhub.domain.ordering.OrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,11 +38,12 @@ class ConfirmOrderStockTest {
 
     @Mock OrderRepository orders;
     @Mock InventoryRepository inventory;
+    @Mock InventoryMovementRepository movements;
     private OrderCommandSupport support;
 
     @BeforeEach
     void setUp() {
-        support = new OrderCommandSupport(orders, inventory);
+        support = new OrderCommandSupport(orders, inventory, movements);
     }
 
     @Test
@@ -54,6 +60,13 @@ class ConfirmOrderStockTest {
         assertThat(stock.quantity()).isEqualTo(7);
         verify(inventory).save(stock);
         verify(orders).save(order);
+        InventoryMovement movement = capturedMovements(1).getFirst();
+        assertThat(movement.type()).isEqualTo(InventoryMovementType.ORDER_CONFIRMATION);
+        assertThat(movement.quantityBefore()).isEqualTo(10);
+        assertThat(movement.quantityDelta()).isEqualTo(-3);
+        assertThat(movement.quantityAfter()).isEqualTo(7);
+        assertThat(movement.actorUserId()).isEqualTo(order.customerId());
+        assertThat(movement.referenceId()).isEqualTo(order.id().value());
     }
 
     @Test
@@ -73,6 +86,7 @@ class ConfirmOrderStockTest {
         assertThat(stock.quantity()).isEqualTo(2);
         verify(inventory, never()).save(stock);
         verify(orders, never()).save(order);
+        verify(movements, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -99,6 +113,7 @@ class ConfirmOrderStockTest {
         verify(inventory, never()).save(firstStock);
         verify(inventory, never()).save(secondStock);
         verify(orders, never()).save(order);
+        verify(movements, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -117,6 +132,7 @@ class ConfirmOrderStockTest {
         assertThat(stock.quantity()).isEqualTo(7);
         verify(inventory, times(1)).save(stock);
         verify(orders, times(1)).save(order);
+        verify(movements, times(1)).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -130,6 +146,7 @@ class ConfirmOrderStockTest {
         assertThat(result.error().code()).isEqualTo("ORDER_FORBIDDEN");
         assertThat(order.status()).isEqualTo(OrderStatus.DRAFT);
         verifyNoInteractions(inventory);
+        verifyNoInteractions(movements);
         verify(orders, never()).save(order);
     }
 
@@ -167,11 +184,63 @@ class ConfirmOrderStockTest {
         assertThat(order.status()).isEqualTo(OrderStatus.DRAFT);
         verify(inventory, never()).save(stock);
         verify(orders, never()).save(order);
+        verify(movements, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void multiItemOrderCreatesOneMovementForEachAffectedProduct() {
+        UUID customerId = UUID.randomUUID();
+        UUID keyboardId = UUID.randomUUID();
+        UUID mouseId = UUID.randomUUID();
+        Order order = Order.create(OrderId.newId(), customerId, NOW.minusSeconds(10));
+        order.addItem(keyboardId, "Keyboard", "KEY-1", BigDecimal.TEN, 3, NOW.minusSeconds(5));
+        order.addItem(mouseId, "Mouse", "MOUSE-1", BigDecimal.TEN, 2, NOW.minusSeconds(4));
+        InventoryItem keyboardStock = stock(keyboardId, 10);
+        InventoryItem mouseStock = stock(mouseId, 5);
+        when(orders.findById(order.id())).thenReturn(Optional.of(order));
+        when(inventory.findByProductId(new ProductId(keyboardId))).thenReturn(Optional.of(keyboardStock));
+        when(inventory.findByProductId(new ProductId(mouseId))).thenReturn(Optional.of(mouseStock));
+
+        var result = support.confirmOwned(order.id().value(), customerId, false, NOW);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(keyboardStock.quantity()).isEqualTo(7);
+        assertThat(mouseStock.quantity()).isEqualTo(3);
+        List<InventoryMovement> savedMovements = capturedMovements(2);
+        assertThat(savedMovements).extracting(movement -> movement.productId().value())
+                .containsExactly(keyboardId, mouseId);
+        assertThat(savedMovements).extracting(InventoryMovement::quantityDelta)
+                .containsExactly(-3, -2);
+    }
+
+    @Test
+    void duplicateProductLinesCreateOneAggregatedMovement() {
+        UUID productId = UUID.randomUUID();
+        Order order = Order.create(OrderId.newId(), UUID.randomUUID(), NOW.minusSeconds(10));
+        order.addItem(productId, "Keyboard", "KEY-1", BigDecimal.TEN, 2, NOW.minusSeconds(5));
+        order.addItem(productId, "Keyboard", "KEY-1", BigDecimal.TEN, 3, NOW.minusSeconds(4));
+        InventoryItem stock = stock(productId, 10);
+        given(order, stock);
+
+        var result = support.confirmOwned(order.id().value(), order.customerId(), false, NOW);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(stock.quantity()).isEqualTo(5);
+        InventoryMovement movement = capturedMovements(1).getFirst();
+        assertThat(movement.quantityBefore()).isEqualTo(10);
+        assertThat(movement.quantityDelta()).isEqualTo(-5);
+        assertThat(movement.quantityAfter()).isEqualTo(5);
     }
 
     private void given(Order order, InventoryItem stock) {
         when(orders.findById(order.id())).thenReturn(Optional.of(order));
         when(inventory.findByProductId(stock.productId())).thenReturn(Optional.of(stock));
+    }
+
+    private List<InventoryMovement> capturedMovements(int count) {
+        ArgumentCaptor<InventoryMovement> captor = ArgumentCaptor.forClass(InventoryMovement.class);
+        verify(movements, times(count)).save(captor.capture());
+        return captor.getAllValues();
     }
 
     private static Order orderWithItem(UUID customerId, UUID productId, String productName, int quantity) {

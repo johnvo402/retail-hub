@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.ordering;
 
 import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.features.inventory.common.InventoryMovementRepository;
 import com.johnvo.retailhub.application.features.ordering.common.OrderCommandSupport;
 import com.johnvo.retailhub.domain.inventory.InventoryRepository;
 import com.johnvo.retailhub.domain.ordering.Order;
@@ -28,12 +29,13 @@ class OrderCommandSupportTest {
 
     @Mock OrderRepository repository;
     @Mock InventoryRepository inventory;
+    @Mock InventoryMovementRepository movements;
     private OrderCommandSupport support;
     private Order order;
 
     @BeforeEach
     void setUp() {
-        support = new OrderCommandSupport(repository, inventory);
+        support = new OrderCommandSupport(repository, inventory, movements);
         order = Order.create(OrderId.newId(), UUID.randomUUID(), NOW);
     }
 

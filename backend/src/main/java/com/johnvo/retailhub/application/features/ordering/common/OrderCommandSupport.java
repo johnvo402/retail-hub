@@ -3,8 +3,11 @@ package com.johnvo.retailhub.application.features.ordering.common;
 import com.johnvo.retailhub.application.common.ApplicationError;
 import com.johnvo.retailhub.application.common.ErrorType;
 import com.johnvo.retailhub.application.common.Result;
+import com.johnvo.retailhub.application.features.inventory.common.InventoryMovementRepository;
 import com.johnvo.retailhub.domain.catalog.ProductId;
 import com.johnvo.retailhub.domain.inventory.InventoryItem;
+import com.johnvo.retailhub.domain.inventory.InventoryMovement;
+import com.johnvo.retailhub.domain.inventory.InventoryMovementType;
 import com.johnvo.retailhub.domain.inventory.InventoryRepository;
 import com.johnvo.retailhub.domain.ordering.Order;
 import com.johnvo.retailhub.domain.ordering.OrderId;
@@ -26,10 +29,13 @@ import java.util.function.Function;
 public class OrderCommandSupport {
     private final OrderRepository repository;
     private final InventoryRepository inventory;
+    private final InventoryMovementRepository movements;
 
-    public OrderCommandSupport(OrderRepository repository, InventoryRepository inventory) {
+    public OrderCommandSupport(OrderRepository repository, InventoryRepository inventory,
+                               InventoryMovementRepository movements) {
         this.repository = repository;
         this.inventory = inventory;
+        this.movements = movements;
     }
 
     @Transactional
@@ -86,9 +92,17 @@ public class OrderCommandSupport {
         }
 
         order.confirm(now);
-        deductions.forEach(deduction -> deduction.item().decrease(deduction.quantity(), now));
+        List<InventoryMovement> stockMovements = new ArrayList<>(deductions.size());
+        for (StockDeduction deduction : deductions) {
+            int quantityBefore = deduction.item().quantity();
+            deduction.item().decrease(deduction.quantity(), now);
+            stockMovements.add(InventoryMovement.create(deduction.item().productId(),
+                    InventoryMovementType.ORDER_CONFIRMATION, quantityBefore, deduction.item().quantity(),
+                    actorId, order.id().value(), null, now));
+        }
         deductions.forEach(deduction -> inventory.save(deduction.item()));
         repository.save(order);
+        stockMovements.forEach(movements::save);
         return Result.success();
     }
 

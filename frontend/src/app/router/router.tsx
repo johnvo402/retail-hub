@@ -13,6 +13,7 @@ const ProductFormPage = lazy(() => import("../../features/products/ProductFormPa
 const CategoriesPage = lazy(() => import("../../features/categories/CategoriesPage"));
 const CategoryFormPage = lazy(() => import("../../features/categories/CategoryFormPage"));
 const InventoryPage = lazy(() => import("../../features/inventory/InventoryPage"));
+const InventoryDetailPage = lazy(() => import("../../features/inventory/InventoryDetailPage"));
 const OrdersPage = lazy(() => import("../../features/orders/OrdersPage"));
 const OrderDetailPage = lazy(() => import("../../features/orders/OrderDetailPage"));
 
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
         { path: "/categories/new", element: pending(<CategoryFormPage />) },
         { path: "/categories/:id/edit", element: pending(<CategoryFormPage />) },
         { path: "/inventory", element: pending(<InventoryPage />) },
+        { path: "/inventory/:productId", element: pending(<InventoryDetailPage />) },
         { path: "/orders", element: pending(<OrdersPage />) },
         { path: "/orders/:id", element: pending(<OrderDetailPage />) },
       ],

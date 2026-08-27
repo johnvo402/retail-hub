@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.api.controller;
 
 import com.johnvo.retailhub.api.exception.ResultResponseMapper;
+import com.johnvo.retailhub.api.security.SecurityUtils;
 import com.johnvo.retailhub.application.features.inventory.command.decreasestock.DecreaseStockCommand;
 import com.johnvo.retailhub.application.features.inventory.command.decreasestock.DecreaseStockCommandHandler;
 import com.johnvo.retailhub.application.features.inventory.command.increasestock.IncreaseStockCommand;
@@ -9,8 +10,12 @@ import com.johnvo.retailhub.application.features.inventory.query.getinventory.Ge
 import com.johnvo.retailhub.application.features.inventory.query.getinventory.GetInventoryQueryHandler;
 import com.johnvo.retailhub.application.features.inventory.query.getinventoryitems.GetInventoryItemsQuery;
 import com.johnvo.retailhub.application.features.inventory.query.getinventoryitems.GetInventoryItemsQueryHandler;
+import com.johnvo.retailhub.application.features.inventory.query.getinventorymovements.GetInventoryMovementsQuery;
+import com.johnvo.retailhub.application.features.inventory.query.getinventorymovements.GetInventoryMovementsQueryHandler;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,15 +32,18 @@ import java.util.UUID;
 public class InventoryController {
     private final GetInventoryItemsQueryHandler list;
     private final GetInventoryQueryHandler get;
+    private final GetInventoryMovementsQueryHandler movements;
     private final IncreaseStockCommandHandler increase;
     private final DecreaseStockCommandHandler decrease;
     private final ResultResponseMapper results;
 
     public InventoryController(GetInventoryItemsQueryHandler list, GetInventoryQueryHandler get,
+                               GetInventoryMovementsQueryHandler movements,
                                IncreaseStockCommandHandler increase, DecreaseStockCommandHandler decrease,
                                ResultResponseMapper results) {
         this.list = list;
         this.get = get;
+        this.movements = movements;
         this.increase = increase;
         this.decrease = decrease;
         this.results = results;
@@ -53,16 +61,27 @@ public class InventoryController {
         return results.ok(get.handle(new GetInventoryQuery(productId)));
     }
 
+    @GetMapping("/{productId}/movements")
+    ResponseEntity<?> movements(@PathVariable UUID productId,
+                                @RequestParam(defaultValue = "0") int page,
+                                @RequestParam(defaultValue = "20") int size) {
+        return results.ok(movements.handle(new GetInventoryMovementsQuery(productId, page, size)));
+    }
+
     @PostMapping("/{productId}/increase")
-    ResponseEntity<?> increase(@PathVariable UUID productId, @Valid @RequestBody AdjustmentRequest request) {
-        return results.ok(increase.handle(new IncreaseStockCommand(productId, request.quantity())));
+    ResponseEntity<?> increase(@PathVariable UUID productId, @Valid @RequestBody AdjustmentRequest request,
+                               Authentication authentication) {
+        return results.ok(increase.handle(new IncreaseStockCommand(productId, request.quantity(),
+                SecurityUtils.userId(authentication), request.reason())));
     }
 
     @PostMapping("/{productId}/decrease")
-    ResponseEntity<?> decrease(@PathVariable UUID productId, @Valid @RequestBody AdjustmentRequest request) {
-        return results.ok(decrease.handle(new DecreaseStockCommand(productId, request.quantity())));
+    ResponseEntity<?> decrease(@PathVariable UUID productId, @Valid @RequestBody AdjustmentRequest request,
+                               Authentication authentication) {
+        return results.ok(decrease.handle(new DecreaseStockCommand(productId, request.quantity(),
+                SecurityUtils.userId(authentication), request.reason())));
     }
 
-    public record AdjustmentRequest(@Min(1) int quantity) {
+    public record AdjustmentRequest(@Min(1) int quantity, @Size(max = 500) String reason) {
     }
 }
