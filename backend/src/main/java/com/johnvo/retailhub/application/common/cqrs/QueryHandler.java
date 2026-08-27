@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.common.cqrs;
 
-public interface QueryHandler<Q extends Query<R>, R> {
-    R handle(Q query);
-}
+import com.johnvo.retailhub.application.common.Result;
 
+public interface QueryHandler<Q extends Query<R>, R> {
+    Result<R> handle(Q query);
+}

@@ -1,10 +1,12 @@
 package com.johnvo.retailhub.application.features.ordering.command.removeorderitem;
 
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.features.ordering.common.OrderCommandSupport;
-import com.johnvo.retailhub.domain.ordering.Order;
+import com.johnvo.retailhub.application.features.ordering.common.OrderConcurrencyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 
@@ -19,13 +21,15 @@ public class RemoveOrderItemCommandHandler implements CommandHandler<RemoveOrder
     }
 
     @Override
-    @Transactional
-    public Void handle(RemoveOrderItemCommand command) {
-        Order order = orders.loadOwned(command.orderId(), command.actorId(), command.admin());
-        long expectedVersion = order.getVersion();
-        order.removeItem(command.itemId(), clock.instant());
-        orders.persist(order, expectedVersion);
-        return null;
+    public Result<Void> handle(RemoveOrderItemCommand command) {
+        try {
+            return orders.updateOwned(command.orderId(), command.actorId(), command.admin(), order -> {
+                order.removeItem(command.itemId(), clock.instant());
+                return null;
+            });
+        } catch (OrderConcurrencyException exception) {
+            return Result.failure(new ApplicationError("ORDER_CONCURRENCY_CONFLICT",
+                    "Order was modified by another request; reload and retry", ErrorType.CONFLICT));
+        }
     }
 }
-

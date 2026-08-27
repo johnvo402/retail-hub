@@ -1,6 +1,5 @@
 package com.johnvo.retailhub.api.security;
 
-import com.johnvo.retailhub.application.common.UnauthorizedException;
 import com.johnvo.retailhub.application.common.security.AccessTokenVerifier;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -34,20 +33,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String authorization = request.getHeader("Authorization");
         if (authorization != null && authorization.startsWith(PREFIX)) {
-            try {
-                AccessTokenVerifier.AuthenticatedUser user = verifier.verify(authorization.substring(PREFIX.length()));
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        user.id().toString(), null,
-                        List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name())));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-            } catch (UnauthorizedException exception) {
+            AccessTokenVerifier.AuthenticatedUser user = verifier.verify(authorization.substring(PREFIX.length()))
+                    .orElse(null);
+            if (user == null) {
                 SecurityContextHolder.clearContext();
                 authenticationEntryPoint.commence(request, response,
-                        new BadCredentialsException(exception.getMessage()));
+                        new BadCredentialsException("Access token is invalid or expired"));
                 return;
             }
+            UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                    user.id().toString(), null,
+                    List.of(new SimpleGrantedAuthority("ROLE_" + user.role().name())));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
         }
         filterChain.doFilter(request, response);
     }
 }
-

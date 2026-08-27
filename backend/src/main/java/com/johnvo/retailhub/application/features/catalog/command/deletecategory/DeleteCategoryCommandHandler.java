@@ -1,6 +1,8 @@
 package com.johnvo.retailhub.application.features.catalog.command.deletecategory;
 
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
 import com.johnvo.retailhub.application.features.catalog.common.CatalogReadPort;
 import com.johnvo.retailhub.application.features.catalog.common.ProductSearchIndex;
@@ -29,13 +31,15 @@ public class DeleteCategoryCommandHandler implements CommandHandler<DeleteCatego
 
     @Override
     @Transactional
-    public Void handle(DeleteCategoryCommand command) {
-        Category category = categories.findById(new CategoryId(command.id()))
-                .orElseThrow(() -> new ResourceNotFoundException("Category was not found"));
+    public Result<Void> handle(DeleteCategoryCommand command) {
+        Category category = categories.findById(new CategoryId(command.id())).orElse(null);
+        if (category == null) {
+            return Result.failure(new ApplicationError(
+                    "CATEGORY_NOT_FOUND", "Category was not found", ErrorType.NOT_FOUND));
+        }
         category.deactivate(clock.instant());
         categories.save(category);
         searchIndex.rebuild(catalog.findAllActiveProducts());
-        return null;
+        return Result.success();
     }
 }
-

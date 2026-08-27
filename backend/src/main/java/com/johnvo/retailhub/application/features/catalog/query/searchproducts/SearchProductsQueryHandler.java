@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.catalog.query.searchproducts;
 
 import com.johnvo.retailhub.application.common.PageResponse;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
 import com.johnvo.retailhub.application.features.catalog.common.ProductSearchIndex;
 import com.johnvo.retailhub.application.features.catalog.common.ProductView;
@@ -15,9 +16,8 @@ public class SearchProductsQueryHandler implements QueryHandler<SearchProductsQu
     }
 
     @Override
-    public PageResponse<ProductView> handle(SearchProductsQuery query) {
-        return searchIndex.search(query.query(), Math.max(query.page(), 0),
-                Math.min(Math.max(query.size(), 1), 100));
+    public Result<PageResponse<ProductView>> handle(SearchProductsQuery query) {
+        return Result.success(searchIndex.search(query.query(), Math.max(query.page(), 0),
+                Math.min(Math.max(query.size(), 1), 100)));
     }
 }
-

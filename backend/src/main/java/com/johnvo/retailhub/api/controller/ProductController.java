@@ -1,7 +1,6 @@
 package com.johnvo.retailhub.api.controller;
 
-import com.johnvo.retailhub.application.common.CreatedId;
-import com.johnvo.retailhub.application.common.PageResponse;
+import com.johnvo.retailhub.api.exception.ResultResponseMapper;
 import com.johnvo.retailhub.application.features.catalog.command.createproduct.CreateProductCommand;
 import com.johnvo.retailhub.application.features.catalog.command.createproduct.CreateProductCommandHandler;
 import com.johnvo.retailhub.application.features.catalog.command.deleteproduct.DeleteProductCommand;
@@ -10,7 +9,6 @@ import com.johnvo.retailhub.application.features.catalog.command.reindexproducts
 import com.johnvo.retailhub.application.features.catalog.command.reindexproducts.ReindexProductsCommandHandler;
 import com.johnvo.retailhub.application.features.catalog.command.updateproduct.UpdateProductCommand;
 import com.johnvo.retailhub.application.features.catalog.command.updateproduct.UpdateProductCommandHandler;
-import com.johnvo.retailhub.application.features.catalog.common.ProductView;
 import com.johnvo.retailhub.application.features.catalog.query.getproduct.GetProductQuery;
 import com.johnvo.retailhub.application.features.catalog.query.getproduct.GetProductQueryHandler;
 import com.johnvo.retailhub.application.features.catalog.query.getproducts.GetProductsQuery;
@@ -49,6 +47,7 @@ public class ProductController {
     private final GetProductsQueryHandler getProducts;
     private final SearchProductsQueryHandler searchProducts;
     private final ReindexProductsCommandHandler reindexProducts;
+    private final ResultResponseMapper results;
 
     public ProductController(CreateProductCommandHandler createProduct,
                              UpdateProductCommandHandler updateProduct,
@@ -56,7 +55,8 @@ public class ProductController {
                              GetProductQueryHandler getProduct,
                              GetProductsQueryHandler getProducts,
                              SearchProductsQueryHandler searchProducts,
-                             ReindexProductsCommandHandler reindexProducts) {
+                             ReindexProductsCommandHandler reindexProducts,
+                             ResultResponseMapper results) {
         this.createProduct = createProduct;
         this.updateProduct = updateProduct;
         this.deleteProduct = deleteProduct;
@@ -64,10 +64,11 @@ public class ProductController {
         this.getProducts = getProducts;
         this.searchProducts = searchProducts;
         this.reindexProducts = reindexProducts;
+        this.results = results;
     }
 
     @GetMapping
-    PageResponse<ProductView> list(
+    ResponseEntity<?> list(
             @RequestParam(required = false) UUID category,
             @RequestParam(required = false) BigDecimal minPrice,
             @RequestParam(required = false) BigDecimal maxPrice,
@@ -76,45 +77,44 @@ public class ProductController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "createdAt,desc") String sort) {
-        return getProducts.handle(new GetProductsQuery(new ProductFilter(category, minPrice, maxPrice,
-                active, keyword, page, size, sort)));
+        return results.ok(getProducts.handle(new GetProductsQuery(new ProductFilter(category, minPrice, maxPrice,
+                active, keyword, page, size, sort))));
     }
 
     @GetMapping("/{id}")
-    ProductView get(@PathVariable UUID id) {
-        return getProduct.handle(new GetProductQuery(id));
+    ResponseEntity<?> get(@PathVariable UUID id) {
+        return results.ok(getProduct.handle(new GetProductQuery(id)));
     }
 
     @GetMapping("/search")
-    PageResponse<ProductView> search(@RequestParam(name = "q", defaultValue = "") String query,
-                                     @RequestParam(defaultValue = "0") int page,
-                                     @RequestParam(defaultValue = "20") int size) {
-        return searchProducts.handle(new SearchProductsQuery(query, page, size));
+    ResponseEntity<?> search(@RequestParam(name = "q", defaultValue = "") String query,
+                             @RequestParam(defaultValue = "0") int page,
+                             @RequestParam(defaultValue = "20") int size) {
+        return results.ok(searchProducts.handle(new SearchProductsQuery(query, page, size)));
     }
 
     @PostMapping
-    ResponseEntity<CreatedId> create(@Valid @RequestBody ProductRequest request) {
-        CreatedId result = createProduct.handle(new CreateProductCommand(request.name(), request.description(),
-                request.sku(), request.price(), request.categoryId()));
-        return ResponseEntity.created(URI.create("/api/products/" + result.id())).body(result);
+    ResponseEntity<?> create(@Valid @RequestBody ProductRequest request) {
+        return results.created(createProduct.handle(new CreateProductCommand(request.name(), request.description(),
+                        request.sku(), request.price(), request.categoryId())),
+                result -> URI.create("/api/products/" + result.id()));
     }
 
     @PutMapping("/{id}")
-    ResponseEntity<Void> update(@PathVariable UUID id, @Valid @RequestBody ProductRequest request) {
-        updateProduct.handle(new UpdateProductCommand(id, request.name(), request.description(), request.sku(),
-                request.price(), request.categoryId(), request.active()));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> update(@PathVariable UUID id, @Valid @RequestBody ProductRequest request) {
+        return results.noContent(updateProduct.handle(new UpdateProductCommand(id, request.name(),
+                request.description(), request.sku(), request.price(), request.categoryId(), request.active())));
     }
 
     @DeleteMapping("/{id}")
-    ResponseEntity<Void> delete(@PathVariable UUID id) {
-        deleteProduct.handle(new DeleteProductCommand(id));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> delete(@PathVariable UUID id) {
+        return results.noContent(deleteProduct.handle(new DeleteProductCommand(id)));
     }
 
     @PostMapping("/search/reindex")
-    Map<String, Integer> reindex() {
-        return Map.of("indexed", reindexProducts.handle(new ReindexProductsCommand()));
+    ResponseEntity<?> reindex() {
+        return results.map(reindexProducts.handle(new ReindexProductsCommand()),
+                indexed -> ResponseEntity.ok(Map.of("indexed", indexed)));
     }
 
     public record ProductRequest(
@@ -127,4 +127,3 @@ public class ProductController {
     ) {
     }
 }
-

@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.auth.command.logoutall;
 
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.domain.identity.AuthSessionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,8 +20,7 @@ public class LogoutAllCommandHandler implements CommandHandler<LogoutAllCommand,
 
     @Override
     @Transactional
-    public Integer handle(LogoutAllCommand command) {
-        return sessions.revokeAllActiveByUserId(command.userId(), clock.instant());
+    public Result<Integer> handle(LogoutAllCommand command) {
+        return Result.success(sessions.revokeAllActiveByUserId(command.userId(), clock.instant()));
     }
 }
-

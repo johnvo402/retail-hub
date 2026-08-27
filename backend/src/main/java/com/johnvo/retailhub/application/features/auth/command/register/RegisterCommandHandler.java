@@ -1,12 +1,15 @@
 package com.johnvo.retailhub.application.features.auth.command.register;
 
-import com.johnvo.retailhub.application.common.ConflictException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
 import com.johnvo.retailhub.application.common.security.PasswordHasher;
 import com.johnvo.retailhub.application.features.auth.common.UserView;
 import com.johnvo.retailhub.domain.identity.User;
 import com.johnvo.retailhub.domain.identity.UserRepository;
 import com.johnvo.retailhub.domain.identity.UserRole;
+import com.johnvo.retailhub.domain.shared.DomainException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,13 +30,18 @@ public class RegisterCommandHandler implements CommandHandler<RegisterCommand, U
 
     @Override
     @Transactional
-    public UserView handle(RegisterCommand command) {
+    public Result<UserView> handle(RegisterCommand command) {
         if (users.findByEmail(command.email()).isPresent()) {
-            throw new ConflictException("An account already exists for this email address");
+            return Result.failure(new ApplicationError("AUTH_EMAIL_EXISTS",
+                    "An account already exists for this email address", ErrorType.CONFLICT));
         }
-        Instant now = clock.instant();
-        User user = User.register(command.email(), passwordHasher.hash(command.password()), UserRole.USER, now);
-        return UserView.from(users.save(user));
+        try {
+            Instant now = clock.instant();
+            User user = User.register(command.email(), passwordHasher.hash(command.password()), UserRole.USER, now);
+            return Result.success(UserView.from(users.save(user)));
+        } catch (DomainException exception) {
+            return Result.failure(new ApplicationError(
+                    "AUTH_REGISTRATION_INVALID", exception.getMessage(), ErrorType.VALIDATION));
+        }
     }
 }
-

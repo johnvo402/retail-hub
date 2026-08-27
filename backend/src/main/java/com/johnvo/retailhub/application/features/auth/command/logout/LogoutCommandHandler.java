@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.auth.command.logout;
 
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.security.TokenService;
 import com.johnvo.retailhub.domain.identity.AuthSessionRepository;
 import org.springframework.stereotype.Service;
@@ -22,7 +23,7 @@ public class LogoutCommandHandler implements CommandHandler<LogoutCommand, Void>
 
     @Override
     @Transactional
-    public Void handle(LogoutCommand command) {
+    public Result<Void> handle(LogoutCommand command) {
         if (command.refreshToken() != null && !command.refreshToken().isBlank()) {
             sessions.findActiveByTokenHashForUpdate(tokens.hashRefreshToken(command.refreshToken()))
                     .ifPresent(session -> {
@@ -30,7 +31,6 @@ public class LogoutCommandHandler implements CommandHandler<LogoutCommand, Void>
                         sessions.save(session);
                     });
         }
-        return null;
+        return Result.success();
     }
 }
-

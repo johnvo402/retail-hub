@@ -1,6 +1,8 @@
 package com.johnvo.retailhub.application.features.catalog.query.getproduct;
 
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
 import com.johnvo.retailhub.application.features.catalog.common.CatalogReadPort;
 import com.johnvo.retailhub.application.features.catalog.common.ProductCache;
@@ -18,13 +20,17 @@ public class GetProductQueryHandler implements QueryHandler<GetProductQuery, Pro
     }
 
     @Override
-    public ProductView handle(GetProductQuery query) {
-        return cache.get(query.id()).orElseGet(() -> {
-            ProductView product = catalog.findProduct(query.id())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product was not found"));
-            cache.put(product);
-            return product;
-        });
+    public Result<ProductView> handle(GetProductQuery query) {
+        ProductView cached = cache.get(query.id()).orElse(null);
+        if (cached != null) {
+            return Result.success(cached);
+        }
+        ProductView product = catalog.findProduct(query.id()).orElse(null);
+        if (product == null) {
+            return Result.failure(new ApplicationError(
+                    "PRODUCT_NOT_FOUND", "Product was not found", ErrorType.NOT_FOUND));
+        }
+        cache.put(product);
+        return Result.success(product);
     }
 }
-

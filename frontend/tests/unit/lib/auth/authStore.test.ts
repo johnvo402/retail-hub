@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { authStore } from "./authStore";
+import { authStore } from "@/lib/auth/authStore";
 
 describe("in-memory auth store", () => {
   beforeEach(() => authStore.clear());
@@ -19,4 +19,3 @@ describe("in-memory auth store", () => {
     expect(authStore.getSnapshot()).toEqual({ accessToken: null, user: null, status: "unauthenticated" });
   });
 });
-

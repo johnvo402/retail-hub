@@ -1,9 +1,5 @@
 package com.johnvo.retailhub.api.exception;
 
-import com.johnvo.retailhub.application.common.ConflictException;
-import com.johnvo.retailhub.application.common.ForbiddenException;
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
-import com.johnvo.retailhub.application.common.UnauthorizedException;
 import com.johnvo.retailhub.domain.shared.DomainException;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolationException;
@@ -52,28 +48,11 @@ public class GlobalExceptionHandler {
                 exception.getMessage(), Map.of());
     }
 
-    @ExceptionHandler(ResourceNotFoundException.class)
-    ResponseEntity<ApiProblem> notFound(ResourceNotFoundException exception) {
-        return problem(HttpStatus.NOT_FOUND, "NOT_FOUND", "Resource not found", exception.getMessage(), Map.of());
-    }
-
-    @ExceptionHandler(UnauthorizedException.class)
-    ResponseEntity<ApiProblem> unauthorized(UnauthorizedException exception) {
-        return problem(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required",
-                exception.getMessage(), Map.of());
-    }
-
-    @ExceptionHandler(ForbiddenException.class)
-    ResponseEntity<ApiProblem> forbidden(ForbiddenException exception) {
-        return problem(HttpStatus.FORBIDDEN, "FORBIDDEN", "Access denied", exception.getMessage(), Map.of());
-    }
-
-    @ExceptionHandler({ConflictException.class, ObjectOptimisticLockingFailureException.class,
-            OptimisticLockException.class, DataIntegrityViolationException.class})
+    @ExceptionHandler({ObjectOptimisticLockingFailureException.class, OptimisticLockException.class,
+            DataIntegrityViolationException.class})
     ResponseEntity<ApiProblem> conflict(Exception exception) {
-        String detail = exception instanceof ConflictException ? exception.getMessage()
-                : "The resource changed concurrently or conflicts with existing data";
-        return problem(HttpStatus.CONFLICT, "CONFLICT", "Conflict", detail, Map.of());
+        return problem(HttpStatus.CONFLICT, "CONFLICT", "Conflict",
+                "The resource changed concurrently or conflicts with existing data", Map.of());
     }
 
     @ExceptionHandler(DomainException.class)

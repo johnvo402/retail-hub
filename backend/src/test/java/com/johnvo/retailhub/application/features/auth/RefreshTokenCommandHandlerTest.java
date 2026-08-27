@@ -50,7 +50,7 @@ class RefreshTokenCommandHandlerTest {
         org.mockito.Mockito.verify(sessions, org.mockito.Mockito.times(2)).save(saved.capture());
         assertThat(saved.getAllValues().getFirst().revokedAt()).isEqualTo(now);
         assertThat(saved.getAllValues().getLast().refreshTokenHash()).isEqualTo("new-hash");
-        assertThat(result.refreshToken()).isEqualTo("new-raw");
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.value().refreshToken()).isEqualTo("new-raw");
     }
 }
-

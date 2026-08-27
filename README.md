@@ -4,8 +4,9 @@ RetailHub is a production-oriented portfolio application for retail catalog,
 inventory, and order operations. It is a Java 21/Spring Boot modular monolith with
 a React/TypeScript client. The implementation follows the repository's original
 technical design: Clean Architecture, application-level vertical slices and CQRS,
-DDD domain models, PostgreSQL-backed Event Sourcing for orders, Redis cache-aside
-reads, Elasticsearch product search, and rotating refresh-token sessions.
+DDD domain models, relational JPA persistence for orders, Result-based application
+failures, Redis cache-aside reads, Elasticsearch product search, and rotating
+refresh-token sessions.
 
 ## Architecture
 
@@ -13,10 +14,10 @@ reads, Elasticsearch product search, and rotating refresh-token sessions.
 flowchart TB
     UI[React + TypeScript<br/>TanStack Query / Axios] --> API[REST API<br/>Security filters / Controllers]
     API --> APP[Application<br/>Vertical slices + CQRS handlers]
-    APP --> DOMAIN[Pure Domain<br/>Aggregates / entities / events / invariants]
+    APP --> DOMAIN[Pure Domain<br/>Aggregates / entities / invariants]
     INFRA[Infrastructure adapters] -. implements ports .-> APP
     INFRA -. maps persistence .-> DOMAIN
-    INFRA --> PG[(PostgreSQL<br/>relational data + event store)]
+    INFRA --> PG[(PostgreSQL<br/>relational data)]
     INFRA --> REDIS[(Redis<br/>product detail cache)]
     INFRA --> ES[(Elasticsearch<br/>product search projection)]
 ```
@@ -34,17 +35,22 @@ organized by use case rather than generic service/DTO directories.
   filtering, Redis product detail caching, and Elasticsearch search/reindex.
 - **Inventory** — stock reads and positive adjustments with a database check and
   Hibernate `@Version` optimistic locking.
-- **Ordering** — an event-sourced `Order` aggregate, PostgreSQL event store,
-  optimistic stream versions, and synchronous relational read-model projection.
+- **Ordering** — a DDD `Order` aggregate persisted in relational `orders` and
+  `order_items` tables, command/query separation, and JPA optimistic locking.
 
-## Order Event Sourcing
+## Ordering persistence and application failures
 
-Only orders are event sourced. Each aggregate stream stores `OrderCreated`,
-`OrderItemAdded`, `OrderItemRemoved`, `OrderConfirmed`, and `OrderCancelled` in
-`domain_events`. `(aggregate_id, version)` is unique, so concurrent appends return
-HTTP `409 Conflict`. Command handlers rehydrate an aggregate before applying a
-business operation. GET endpoints never replay streams; they query
-`order_read_models` and `order_item_read_models`.
+Order command handlers load and mutate the `Order` aggregate through an
+`OrderRepository`, then persist it with Hibernate. Queries remain logically separate
+and use direct relational DTO projections; there is no event replay, event store, or
+duplicate order read table. The `orders.version` column is managed by JPA `@Version`,
+and expected concurrent changes return a `CONFLICT` Result that maps to HTTP 409.
+
+All CQRS handlers return a small framework-independent `Result<T>`. Expected
+validation, not-found, authorization, conflict, and business-rule failures are
+represented by stable application error codes and mapped to the existing API problem
+shape at the controller boundary. Unexpected infrastructure failures still propagate
+to the global exception handler.
 
 ## Authentication and token storage
 
@@ -95,12 +101,16 @@ HTTPS.
 │       ├── domain/
 │       └── infrastructure/
 ├── frontend/
-│   └── src/
-│       ├── app/
-│       ├── components/
-│       ├── features/
-│       ├── lib/
-│       └── types/
+│   ├── src/
+│   │   ├── app/
+│   │   ├── components/
+│   │   ├── features/
+│   │   ├── lib/
+│   │   └── types/
+│   └── tests/
+│       ├── unit/
+│       ├── integration/
+│       └── setup/
 ├── design-system/
 ├── docker-compose.yml
 ├── .env.example
@@ -174,9 +184,10 @@ Flyway runs automatically before Hibernate validation. Hibernate uses
 1. users
 2. categories and products
 3. inventory with non-negative stock check
-4. JSONB domain event store and unique stream versions
-5. order read models
+4. historical JSONB order event store (removed by migration 7)
+5. historical order read models (migrated and removed by migration 7)
 6. hashed refresh sessions
+7. relational orders/order items, projection data migration, and event-table cleanup
 
 Run migrations by starting the backend, or package/start it with:
 
@@ -211,10 +222,11 @@ Compose syntax and resolved configuration:
 docker compose config --quiet
 ```
 
-Tests cover order and inventory invariants, application handlers, refresh rotation,
-old-token rejection, cookie attributes, logout revocation, protected endpoints,
-Flyway/JPA mappings, Redis population/invalidation, Elasticsearch indexing/search,
-event persistence/concurrency, and order projection correctness.
+Tests cover order and inventory invariants, Result-based application handlers,
+refresh rotation, old-token rejection, cookie attributes, logout revocation,
+protected endpoints, Flyway/JPA mappings, Redis population/invalidation,
+Elasticsearch indexing/search, relational order round trips, query projections, and
+JPA optimistic concurrency.
 
 ## API overview
 

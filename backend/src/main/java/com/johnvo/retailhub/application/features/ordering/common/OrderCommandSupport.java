@@ -1,44 +1,60 @@
 package com.johnvo.retailhub.application.features.ordering.common;
 
-import com.johnvo.retailhub.application.common.ForbiddenException;
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.domain.ordering.Order;
-import com.johnvo.retailhub.domain.ordering.events.OrderEvent;
-import com.johnvo.retailhub.domain.shared.DomainEvent;
+import com.johnvo.retailhub.domain.ordering.OrderId;
+import com.johnvo.retailhub.domain.ordering.OrderRepository;
+import com.johnvo.retailhub.domain.shared.DomainException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
 
 @Component
 public class OrderCommandSupport {
-    private final OrderEventStore eventStore;
-    private final OrderProjection projection;
+    private final OrderRepository repository;
 
-    public OrderCommandSupport(OrderEventStore eventStore, OrderProjection projection) {
-        this.eventStore = eventStore;
-        this.projection = projection;
+    public OrderCommandSupport(OrderRepository repository) {
+        this.repository = repository;
     }
 
-    public Order loadOwned(UUID orderId, UUID actorId, boolean admin) {
-        List<OrderEvent> history = eventStore.load(orderId);
-        if (history.isEmpty()) {
-            throw new ResourceNotFoundException("Order was not found");
+    @Transactional
+    public Order create(Order order) {
+        return repository.save(order);
+    }
+
+    @Transactional
+    public <T> Result<T> updateOwned(UUID orderId, UUID actorId, boolean admin,
+                                     Function<Order, T> operation) {
+        Order order = repository.findById(new OrderId(orderId)).orElse(null);
+        if (order == null) {
+            return Result.failure(new ApplicationError(
+                    "ORDER_NOT_FOUND", "Order was not found", ErrorType.NOT_FOUND));
         }
-        Order order = Order.rehydrate(history);
         if (!admin && !order.customerId().equals(actorId)) {
-            throw new ForbiddenException("You cannot modify this order");
+            return Result.failure(new ApplicationError(
+                    "ORDER_FORBIDDEN", "You cannot modify this order", ErrorType.FORBIDDEN));
         }
-        return order;
+        try {
+            T value = operation.apply(order);
+            repository.save(order);
+            return Result.success(value);
+        } catch (DomainException exception) {
+            return Result.failure(domainFailure(exception));
+        }
     }
 
-    public void persist(Order order, long expectedVersion) {
-        List<OrderEvent> events = order.getUncommittedEvents().stream()
-                .map(event -> (OrderEvent) event)
-                .toList();
-        eventStore.append(order.id().value(), expectedVersion, events);
-        projection.apply(events);
-        order.markEventsAsCommitted();
+    private static ApplicationError domainFailure(DomainException exception) {
+        String message = exception.getMessage();
+        if ("Order item does not exist".equals(message)) {
+            return new ApplicationError("ORDER_ITEM_NOT_FOUND", message, ErrorType.BUSINESS_RULE);
+        }
+        if ("Cannot confirm an order without items".equals(message)) {
+            return new ApplicationError("ORDER_EMPTY", message, ErrorType.BUSINESS_RULE);
+        }
+        return new ApplicationError("ORDER_INVALID_STATE", message, ErrorType.BUSINESS_RULE);
     }
 }
-

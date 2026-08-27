@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.catalog.command.reindexproducts;
 
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.features.catalog.common.CatalogReadPort;
 import com.johnvo.retailhub.application.features.catalog.common.ProductSearchIndex;
 import org.springframework.stereotype.Service;
@@ -16,8 +17,7 @@ public class ReindexProductsCommandHandler implements CommandHandler<ReindexProd
     }
 
     @Override
-    public Integer handle(ReindexProductsCommand command) {
-        return searchIndex.rebuild(catalog.findAllActiveProducts());
+    public Result<Integer> handle(ReindexProductsCommand command) {
+        return Result.success(searchIndex.rebuild(catalog.findAllActiveProducts()));
     }
 }
-

@@ -1,10 +1,12 @@
 package com.johnvo.retailhub.application.features.ordering.command.confirmorder;
 
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.features.ordering.common.OrderCommandSupport;
-import com.johnvo.retailhub.domain.ordering.Order;
+import com.johnvo.retailhub.application.features.ordering.common.OrderConcurrencyException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 
@@ -19,13 +21,15 @@ public class ConfirmOrderCommandHandler implements CommandHandler<ConfirmOrderCo
     }
 
     @Override
-    @Transactional
-    public Void handle(ConfirmOrderCommand command) {
-        Order order = orders.loadOwned(command.orderId(), command.actorId(), command.admin());
-        long expectedVersion = order.getVersion();
-        order.confirm(clock.instant());
-        orders.persist(order, expectedVersion);
-        return null;
+    public Result<Void> handle(ConfirmOrderCommand command) {
+        try {
+            return orders.updateOwned(command.orderId(), command.actorId(), command.admin(), order -> {
+                order.confirm(clock.instant());
+                return null;
+            });
+        } catch (OrderConcurrencyException exception) {
+            return Result.failure(new ApplicationError("ORDER_CONCURRENCY_CONFLICT",
+                    "Order was modified by another request; reload and retry", ErrorType.CONFLICT));
+        }
     }
 }
-

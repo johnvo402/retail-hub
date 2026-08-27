@@ -6,7 +6,6 @@ import com.johnvo.retailhub.application.features.ordering.common.OrderReadPort;
 import com.johnvo.retailhub.application.features.ordering.common.OrderView;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,9 +16,9 @@ import java.util.UUID;
 @Repository
 @Transactional(readOnly = true)
 public class JpaOrderReadAdapter implements OrderReadPort {
-    private final SpringDataOrderReadRepository repository;
+    private final SpringDataOrderRepository repository;
 
-    public JpaOrderReadAdapter(SpringDataOrderReadRepository repository) {
+    public JpaOrderReadAdapter(SpringDataOrderRepository repository) {
         this.repository = repository;
     }
 
@@ -30,21 +29,31 @@ public class JpaOrderReadAdapter implements OrderReadPort {
 
     @Override
     public PageResponse<OrderView> findAll(UUID customerId, int page, int size) {
-        PageRequest request = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<OrderReadModelJpaEntity> result = customerId == null
-                ? repository.findAll(request)
-                : repository.findAllByCustomerId(customerId, request);
-        return new PageResponse<>(result.getContent().stream().map(entity -> toView(entity, false)).toList(),
+        PageRequest request = PageRequest.of(page, size);
+        Page<OrderSummaryProjection> result = customerId == null
+                ? repository.findAllSummaries(request)
+                : repository.findAllSummariesByCustomerId(customerId, request);
+        return new PageResponse<>(result.getContent().stream().map(JpaOrderReadAdapter::toSummaryView).toList(),
                 result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
     }
 
-    private static OrderView toView(OrderReadModelJpaEntity entity, boolean includeItems) {
+    private static OrderView toView(OrderJpaEntity entity, boolean includeItems) {
         List<OrderItemView> items = includeItems ? entity.getItems().stream()
                 .map(item -> new OrderItemView(item.getId(), item.getProductId(), item.getProductName(),
                         item.getSku(), item.getUnitPrice(), item.getQuantity(), item.getLineTotal()))
                 .toList() : List.of();
-        return new OrderView(entity.getId(), entity.getCustomerId(), entity.getStatus(), entity.getTotalAmount(),
-                entity.getItemCount(), entity.getCreatedAt(), entity.getConfirmedAt(), entity.getCancelledAt(), items);
+        java.math.BigDecimal totalAmount = entity.getItems().stream()
+                .map(OrderItemJpaEntity::getLineTotal)
+                .reduce(java.math.BigDecimal.ZERO.setScale(2), java.math.BigDecimal::add);
+        int itemCount = entity.getItems().stream().mapToInt(OrderItemJpaEntity::getQuantity).sum();
+        return new OrderView(entity.getId(), entity.getCustomerId(), entity.getStatus(), totalAmount,
+                itemCount, entity.getCreatedAt(), entity.getConfirmedAt(), entity.getCancelledAt(), items);
+    }
+
+    private static OrderView toSummaryView(OrderSummaryProjection summary) {
+        return new OrderView(summary.getId(), summary.getCustomerId(),
+                com.johnvo.retailhub.domain.ordering.OrderStatus.valueOf(summary.getStatus()),
+                summary.getTotalAmount(), Math.toIntExact(summary.getItemCount()), summary.getCreatedAt(),
+                summary.getConfirmedAt(), summary.getCancelledAt(), List.of());
     }
 }
-

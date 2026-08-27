@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.ordering.query.getorders;
 
 import com.johnvo.retailhub.application.common.PageResponse;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
 import com.johnvo.retailhub.application.features.ordering.common.OrderReadPort;
 import com.johnvo.retailhub.application.features.ordering.common.OrderView;
@@ -15,9 +16,8 @@ public class GetOrdersQueryHandler implements QueryHandler<GetOrdersQuery, PageR
     }
 
     @Override
-    public PageResponse<OrderView> handle(GetOrdersQuery query) {
-        return orders.findAll(query.admin() ? null : query.actorId(), Math.max(query.page(), 0),
-                Math.min(Math.max(query.size(), 1), 100));
+    public Result<PageResponse<OrderView>> handle(GetOrdersQuery query) {
+        return Result.success(orders.findAll(query.admin() ? null : query.actorId(), Math.max(query.page(), 0),
+                Math.min(Math.max(query.size(), 1), 100)));
     }
 }
-

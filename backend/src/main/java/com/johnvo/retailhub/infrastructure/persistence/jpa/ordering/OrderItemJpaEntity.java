@@ -1,5 +1,6 @@
 package com.johnvo.retailhub.infrastructure.persistence.jpa.ordering;
 
+import com.johnvo.retailhub.domain.ordering.OrderItem;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -12,14 +13,14 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
-@Table(name = "order_item_read_models")
-public class OrderItemReadModelJpaEntity {
+@Table(name = "order_items")
+public class OrderItemJpaEntity {
     @Id
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "order_id", nullable = false)
-    private OrderReadModelJpaEntity order;
+    private OrderJpaEntity order;
 
     @Column(name = "product_id", nullable = false)
     private UUID productId;
@@ -36,22 +37,21 @@ public class OrderItemReadModelJpaEntity {
     @Column(nullable = false)
     private int quantity;
 
-    @Column(name = "line_total", nullable = false, precision = 19, scale = 2)
-    private BigDecimal lineTotal;
-
-    protected OrderItemReadModelJpaEntity() {
+    protected OrderItemJpaEntity() {
     }
 
-    public OrderItemReadModelJpaEntity(UUID id, OrderReadModelJpaEntity order, UUID productId,
-                                       String productName, String sku, BigDecimal unitPrice, int quantity) {
-        this.id = id;
+    public OrderItemJpaEntity(OrderJpaEntity order, OrderItem item) {
+        this.id = item.id();
         this.order = order;
-        this.productId = productId;
-        this.productName = productName;
-        this.sku = sku;
-        this.unitPrice = unitPrice;
-        this.quantity = quantity;
-        this.lineTotal = unitPrice.multiply(BigDecimal.valueOf(quantity));
+        update(item);
+    }
+
+    public void update(OrderItem item) {
+        productId = item.productId();
+        productName = item.productName();
+        sku = item.sku();
+        unitPrice = item.unitPrice();
+        quantity = item.quantity();
     }
 
     public UUID getId() { return id; }
@@ -60,6 +60,5 @@ public class OrderItemReadModelJpaEntity {
     public String getSku() { return sku; }
     public BigDecimal getUnitPrice() { return unitPrice; }
     public int getQuantity() { return quantity; }
-    public BigDecimal getLineTotal() { return lineTotal; }
+    public BigDecimal getLineTotal() { return unitPrice.multiply(BigDecimal.valueOf(quantity)); }
 }
-

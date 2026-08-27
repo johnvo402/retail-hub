@@ -1,6 +1,6 @@
 package com.johnvo.retailhub.application.features.auth;
 
-import com.johnvo.retailhub.application.common.UnauthorizedException;
+import com.johnvo.retailhub.application.common.ErrorType;
 import com.johnvo.retailhub.application.common.security.PasswordHasher;
 import com.johnvo.retailhub.application.common.security.TokenService;
 import com.johnvo.retailhub.application.features.auth.command.login.LoginCommand;
@@ -22,7 +22,6 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -57,8 +56,9 @@ class LoginCommandHandlerTest {
 
         var result = handler.handle(new LoginCommand(user.email(), "correct-password", "test-agent"));
 
-        assertThat(result.accessToken()).isEqualTo("access");
-        assertThat(result.refreshToken()).isEqualTo("raw-refresh");
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.value().accessToken()).isEqualTo("access");
+        assertThat(result.value().refreshToken()).isEqualTo("raw-refresh");
         verify(sessions).save(org.mockito.ArgumentMatchers.argThat(session ->
                 session.refreshTokenHash().equals("hashed-refresh")
                         && !session.refreshTokenHash().equals("raw-refresh")));
@@ -69,8 +69,10 @@ class LoginCommandHandlerTest {
         when(users.findByEmail(user.email())).thenReturn(Optional.of(user));
         when(passwords.matches("wrong-password", "encoded")).thenReturn(false);
 
-        assertThatThrownBy(() -> handler.handle(new LoginCommand(user.email(), "wrong-password", null)))
-                .isInstanceOf(UnauthorizedException.class);
+        var result = handler.handle(new LoginCommand(user.email(), "wrong-password", null));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.error().code()).isEqualTo("AUTH_INVALID_CREDENTIALS");
+        assertThat(result.error().type()).isEqualTo(ErrorType.UNAUTHORIZED);
     }
 }
-
