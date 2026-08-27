@@ -113,7 +113,9 @@ HTTPS.
 │       └── setup/
 ├── design-system/
 ├── docker-compose.yml
+├── docker-compose.prod.yml
 ├── .env.example
+├── .env.production.example
 └── README.md
 ```
 
@@ -154,6 +156,35 @@ To intentionally remove the project's named database/cache/index volumes as well
 
 ```powershell
 docker compose down --volumes
+```
+
+## Production Docker Compose
+
+The production stack publishes only the frontend port. Nginx serves the React
+application and proxies `/api` to the backend across Docker's private network.
+PostgreSQL, Redis, Elasticsearch, and the backend have no host port mappings.
+
+Create the production environment file and replace every blank secret and the
+example public origin before starting:
+
+```powershell
+Copy-Item .env.production.example .env.production
+# Edit .env.production: POSTGRES_PASSWORD, JWT_ACCESS_SECRET, and PUBLIC_ORIGIN
+
+docker compose --env-file .env.production -f docker-compose.prod.yml config
+docker compose --env-file .env.production -f docker-compose.prod.yml up --build -d
+docker compose --env-file .env.production -f docker-compose.prod.yml ps
+```
+
+The application is available on `FRONTEND_PORT` (port `80` by default), and backend
+health is reachable through the same public origin at `/api/health`. Put this port
+behind an HTTPS load balancer or reverse proxy; production defaults to
+`COOKIE_SECURE=true`, so authentication cookies require HTTPS.
+
+Stop the production stack without deleting persistent data:
+
+```powershell
+docker compose --env-file .env.production -f docker-compose.prod.yml down
 ```
 
 ## Run infrastructure in Docker and apps on the host

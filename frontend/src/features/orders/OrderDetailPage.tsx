@@ -5,7 +5,8 @@ import { Link, useParams } from "react-router-dom";
 import { ErrorState, LoadingState } from "../../components/States";
 import { formatCurrency, formatDate, shortId } from "../../lib/format";
 import { problemMessage } from "../../lib/api/client";
-import { getCategories, listProducts } from "../products/productApi";
+import { getCategories } from "../categories/categoryApi";
+import { listProducts } from "../products/productApi";
 import { addOrderItem, cancelOrder, confirmOrder, getOrder, removeOrderItem } from "./orderApi";
 
 export default function OrderDetailPage() {
@@ -69,11 +70,10 @@ export default function OrderDetailPage() {
     </section>
 
     <section className="detail-grid order-meta">
-      <article className="detail-card"><span>Event-sourced ID</span><strong className="long-token">{data.id}</strong></article>
+      <article className="detail-card"><span>Order ID</span><strong className="long-token">{data.id}</strong></article>
       <article className="detail-card"><span>Customer</span><strong className="long-token">{data.customerId}</strong></article>
       {data.confirmedAt && <article className="detail-card"><span>Confirmed</span><strong>{formatDate(data.confirmedAt)}</strong></article>}
       {data.cancelledAt && <article className="detail-card"><span>Cancelled</span><strong>{formatDate(data.cancelledAt)}</strong></article>}
     </section>
   </div>;
 }
-

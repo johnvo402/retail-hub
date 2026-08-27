@@ -1,5 +1,5 @@
 import { api } from "../../lib/api/client";
-import type { Category, PageResponse, Product } from "../../types/api";
+import type { PageResponse, Product } from "../../types/api";
 
 export interface ProductInput {
   name: string;
@@ -26,10 +26,6 @@ export async function getProduct(id: string) {
   return (await api.get<Product>(`/products/${id}`)).data;
 }
 
-export async function getCategories() {
-  return (await api.get<Category[]>("/categories")).data;
-}
-
 export async function createProduct(input: ProductInput) {
   return (await api.post<{ id: string }>("/products", input)).data;
 }
@@ -41,8 +37,3 @@ export async function updateProduct(id: string, input: ProductInput) {
 export async function deleteProduct(id: string) {
   await api.delete(`/products/${id}`);
 }
-
-export async function createCategory(name: string, description: string) {
-  return (await api.post<{ id: string }>("/categories", { name, description, active: true })).data;
-}
-

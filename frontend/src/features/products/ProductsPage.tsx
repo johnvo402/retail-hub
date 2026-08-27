@@ -7,7 +7,8 @@ import { Pagination } from "../../components/Pagination";
 import { EmptyState, ErrorState, LoadingState } from "../../components/States";
 import { formatCurrency } from "../../lib/format";
 import { useAuthState } from "../../lib/auth/authStore";
-import { getCategories, listProducts, searchProducts } from "./productApi";
+import { getCategories } from "../categories/categoryApi";
+import { listProducts, searchProducts } from "./productApi";
 
 export default function ProductsPage() {
   const [search, setSearch] = useState("");
@@ -60,4 +61,3 @@ export default function ProductsPage() {
       </>}
   </div>;
 }
-

@@ -9,6 +9,8 @@ const DashboardPage = lazy(() => import("../../features/dashboard/DashboardPage"
 const ProductsPage = lazy(() => import("../../features/products/ProductsPage"));
 const ProductDetailPage = lazy(() => import("../../features/products/ProductDetailPage"));
 const ProductFormPage = lazy(() => import("../../features/products/ProductFormPage"));
+const CategoriesPage = lazy(() => import("../../features/categories/CategoriesPage"));
+const CategoryFormPage = lazy(() => import("../../features/categories/CategoryFormPage"));
 const InventoryPage = lazy(() => import("../../features/inventory/InventoryPage"));
 const OrdersPage = lazy(() => import("../../features/orders/OrdersPage"));
 const OrderDetailPage = lazy(() => import("../../features/orders/OrderDetailPage"));
@@ -30,6 +32,9 @@ export const router = createBrowserRouter([
         { path: "/products/new", element: pending(<ProductFormPage />) },
         { path: "/products/:id", element: pending(<ProductDetailPage />) },
         { path: "/products/:id/edit", element: pending(<ProductFormPage />) },
+        { path: "/categories/manage", element: pending(<CategoriesPage />) },
+        { path: "/categories/new", element: pending(<CategoryFormPage />) },
+        { path: "/categories/:id/edit", element: pending(<CategoryFormPage />) },
         { path: "/inventory", element: pending(<InventoryPage />) },
         { path: "/orders", element: pending(<OrdersPage />) },
         { path: "/orders/:id", element: pending(<OrderDetailPage />) },
@@ -38,4 +43,3 @@ export const router = createBrowserRouter([
   },
   { path: "*", element: <Navigate to="/dashboard" replace /> },
 ]);
-

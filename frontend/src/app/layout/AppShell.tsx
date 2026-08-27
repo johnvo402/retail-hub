@@ -5,6 +5,7 @@ import {
   SignOut,
   SquaresFour,
   Storefront,
+  Tag,
   Warehouse,
   X,
 } from "@phosphor-icons/react";
@@ -16,6 +17,7 @@ import { useAuthState } from "../../lib/auth/authStore";
 const links = [
   { to: "/dashboard", label: "Overview", icon: SquaresFour },
   { to: "/products", label: "Products", icon: Package },
+  { to: "/categories/manage", label: "Categories", icon: Tag, adminOnly: true },
   { to: "/inventory", label: "Inventory", icon: Warehouse },
   { to: "/orders", label: "Orders", icon: Receipt },
 ];
@@ -44,7 +46,8 @@ export function AppShell() {
           onClick={() => setMenuOpen(false)}><X size={20} aria-hidden="true" /></button>
       </div>
       <nav className="nav-list">
-        {links.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to}
+        {links.filter(({ adminOnly }) => !adminOnly || auth.user?.role === "ADMIN")
+          .map(({ to, label, icon: Icon }) => <NavLink key={to} to={to}
           onClick={() => setMenuOpen(false)}
           className={({ isActive }) => `nav-link ${isActive ? "nav-link-active" : ""}`}>
           <Icon size={20} aria-hidden="true" /> <span>{label}</span>
@@ -76,4 +79,3 @@ export function AppShell() {
     </div>
   </div>;
 }
-

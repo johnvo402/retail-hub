@@ -1,4 +1,5 @@
 .env
+.env.production
 .idea/
 .vscode/
 *.iml
@@ -16,4 +17,3 @@ frontend/coverage/
 frontend/.vite/
 
 *.log
-

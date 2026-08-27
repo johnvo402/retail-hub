@@ -8,7 +8,8 @@ import { z } from "zod";
 import { ErrorState, LoadingState } from "../../components/States";
 import { problemMessage } from "../../lib/api/client";
 import { useAuthState } from "../../lib/auth/authStore";
-import { createCategory, createProduct, getCategories, getProduct, updateProduct } from "./productApi";
+import { createCategory, getCategories } from "../categories/categoryApi";
+import { createProduct, getProduct, updateProduct } from "./productApi";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(200),
@@ -54,7 +55,11 @@ export default function ProductFormPage() {
       navigate(`/products/${result.id}`);
     },
   });
-  const addCategory = useMutation({ mutationFn: () => createCategory(categoryName, categoryDescription),
+  const addCategory = useMutation({ mutationFn: () => createCategory({
+    name: categoryName,
+    description: categoryDescription,
+    active: true,
+  }),
     onSuccess: async ({ id: categoryId }) => {
       await queryClient.invalidateQueries({ queryKey: ["categories"] });
       setValue("categoryId", categoryId, { shouldValidate: true });
