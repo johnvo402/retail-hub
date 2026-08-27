@@ -1,13 +1,12 @@
 package com.johnvo.retailhub.api.controller;
 
-import com.johnvo.retailhub.application.common.CreatedId;
+import com.johnvo.retailhub.api.exception.ResultResponseMapper;
 import com.johnvo.retailhub.application.features.catalog.command.createcategory.CreateCategoryCommand;
 import com.johnvo.retailhub.application.features.catalog.command.createcategory.CreateCategoryCommandHandler;
 import com.johnvo.retailhub.application.features.catalog.command.deletecategory.DeleteCategoryCommand;
 import com.johnvo.retailhub.application.features.catalog.command.deletecategory.DeleteCategoryCommandHandler;
 import com.johnvo.retailhub.application.features.catalog.command.updatecategory.UpdateCategoryCommand;
 import com.johnvo.retailhub.application.features.catalog.command.updatecategory.UpdateCategoryCommandHandler;
-import com.johnvo.retailhub.application.features.catalog.common.CategoryView;
 import com.johnvo.retailhub.application.features.catalog.query.getcategories.GetCategoriesQuery;
 import com.johnvo.retailhub.application.features.catalog.query.getcategories.GetCategoriesQueryHandler;
 import com.johnvo.retailhub.application.features.catalog.query.getcategory.GetCategoryQuery;
@@ -26,7 +25,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.net.URI;
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -37,43 +35,44 @@ public class CategoryController {
     private final DeleteCategoryCommandHandler delete;
     private final GetCategoriesQueryHandler list;
     private final GetCategoryQueryHandler get;
+    private final ResultResponseMapper results;
 
     public CategoryController(CreateCategoryCommandHandler create, UpdateCategoryCommandHandler update,
                               DeleteCategoryCommandHandler delete, GetCategoriesQueryHandler list,
-                              GetCategoryQueryHandler get) {
+                              GetCategoryQueryHandler get, ResultResponseMapper results) {
         this.create = create;
         this.update = update;
         this.delete = delete;
         this.list = list;
         this.get = get;
+        this.results = results;
     }
 
     @GetMapping
-    List<CategoryView> list() {
-        return list.handle(new GetCategoriesQuery());
+    ResponseEntity<?> list() {
+        return results.ok(list.handle(new GetCategoriesQuery()));
     }
 
     @GetMapping("/{id}")
-    CategoryView get(@PathVariable UUID id) {
-        return get.handle(new GetCategoryQuery(id));
+    ResponseEntity<?> get(@PathVariable UUID id) {
+        return results.ok(get.handle(new GetCategoryQuery(id)));
     }
 
     @PostMapping
-    ResponseEntity<CreatedId> create(@Valid @RequestBody CategoryRequest request) {
-        CreatedId result = create.handle(new CreateCategoryCommand(request.name(), request.description()));
-        return ResponseEntity.created(URI.create("/api/categories/" + result.id())).body(result);
+    ResponseEntity<?> create(@Valid @RequestBody CategoryRequest request) {
+        return results.created(create.handle(new CreateCategoryCommand(request.name(), request.description())),
+                result -> URI.create("/api/categories/" + result.id()));
     }
 
     @PutMapping("/{id}")
-    ResponseEntity<Void> update(@PathVariable UUID id, @Valid @RequestBody CategoryRequest request) {
-        update.handle(new UpdateCategoryCommand(id, request.name(), request.description(), request.active()));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> update(@PathVariable UUID id, @Valid @RequestBody CategoryRequest request) {
+        return results.noContent(update.handle(
+                new UpdateCategoryCommand(id, request.name(), request.description(), request.active())));
     }
 
     @DeleteMapping("/{id}")
-    ResponseEntity<Void> delete(@PathVariable UUID id) {
-        delete.handle(new DeleteCategoryCommand(id));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> delete(@PathVariable UUID id) {
+        return results.noContent(delete.handle(new DeleteCategoryCommand(id)));
     }
 
     public record CategoryRequest(
@@ -83,4 +82,3 @@ public class CategoryController {
     ) {
     }
 }
-

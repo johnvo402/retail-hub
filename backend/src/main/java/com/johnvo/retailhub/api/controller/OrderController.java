@@ -1,8 +1,7 @@
 package com.johnvo.retailhub.api.controller;
 
 import com.johnvo.retailhub.api.security.SecurityUtils;
-import com.johnvo.retailhub.application.common.CreatedId;
-import com.johnvo.retailhub.application.common.PageResponse;
+import com.johnvo.retailhub.api.exception.ResultResponseMapper;
 import com.johnvo.retailhub.application.features.ordering.command.addorderitem.AddOrderItemCommand;
 import com.johnvo.retailhub.application.features.ordering.command.addorderitem.AddOrderItemCommandHandler;
 import com.johnvo.retailhub.application.features.ordering.command.cancelorder.CancelOrderCommand;
@@ -13,7 +12,6 @@ import com.johnvo.retailhub.application.features.ordering.command.createorder.Cr
 import com.johnvo.retailhub.application.features.ordering.command.createorder.CreateOrderCommandHandler;
 import com.johnvo.retailhub.application.features.ordering.command.removeorderitem.RemoveOrderItemCommand;
 import com.johnvo.retailhub.application.features.ordering.command.removeorderitem.RemoveOrderItemCommandHandler;
-import com.johnvo.retailhub.application.features.ordering.common.OrderView;
 import com.johnvo.retailhub.application.features.ordering.query.getorder.GetOrderQuery;
 import com.johnvo.retailhub.application.features.ordering.query.getorder.GetOrderQueryHandler;
 import com.johnvo.retailhub.application.features.ordering.query.getorders.GetOrdersQuery;
@@ -45,11 +43,12 @@ public class OrderController {
     private final CancelOrderCommandHandler cancel;
     private final GetOrderQueryHandler get;
     private final GetOrdersQueryHandler list;
+    private final ResultResponseMapper results;
 
     public OrderController(CreateOrderCommandHandler create, AddOrderItemCommandHandler addItem,
                            RemoveOrderItemCommandHandler removeItem, ConfirmOrderCommandHandler confirm,
                            CancelOrderCommandHandler cancel, GetOrderQueryHandler get,
-                           GetOrdersQueryHandler list) {
+                           GetOrdersQueryHandler list, ResultResponseMapper results) {
         this.create = create;
         this.addItem = addItem;
         this.removeItem = removeItem;
@@ -57,59 +56,56 @@ public class OrderController {
         this.cancel = cancel;
         this.get = get;
         this.list = list;
+        this.results = results;
     }
 
     @PostMapping
-    ResponseEntity<CreatedId> create(Authentication authentication) {
-        CreatedId result = create.handle(new CreateOrderCommand(SecurityUtils.userId(authentication)));
-        return ResponseEntity.created(URI.create("/api/orders/" + result.id())).body(result);
+    ResponseEntity<?> create(Authentication authentication) {
+        return results.created(create.handle(new CreateOrderCommand(SecurityUtils.userId(authentication))),
+                result -> URI.create("/api/orders/" + result.id()));
     }
 
     @PostMapping("/{id}/items")
-    ResponseEntity<CreatedId> addItem(@PathVariable UUID id, @Valid @RequestBody AddItemRequest request,
-                                     Authentication authentication) {
-        CreatedId result = addItem.handle(new AddOrderItemCommand(id, request.productId(), request.quantity(),
-                SecurityUtils.userId(authentication), SecurityUtils.isAdmin(authentication)));
-        return ResponseEntity.created(URI.create("/api/orders/" + id + "/items/" + result.id())).body(result);
+    ResponseEntity<?> addItem(@PathVariable UUID id, @Valid @RequestBody AddItemRequest request,
+                              Authentication authentication) {
+        return results.created(addItem.handle(new AddOrderItemCommand(id, request.productId(), request.quantity(),
+                        SecurityUtils.userId(authentication), SecurityUtils.isAdmin(authentication))),
+                result -> URI.create("/api/orders/" + id + "/items/" + result.id()));
     }
 
     @DeleteMapping("/{id}/items/{itemId}")
-    ResponseEntity<Void> removeItem(@PathVariable UUID id, @PathVariable UUID itemId,
-                                    Authentication authentication) {
-        removeItem.handle(new RemoveOrderItemCommand(id, itemId, SecurityUtils.userId(authentication),
-                SecurityUtils.isAdmin(authentication)));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> removeItem(@PathVariable UUID id, @PathVariable UUID itemId,
+                                 Authentication authentication) {
+        return results.noContent(removeItem.handle(new RemoveOrderItemCommand(id, itemId,
+                SecurityUtils.userId(authentication), SecurityUtils.isAdmin(authentication))));
     }
 
     @PostMapping("/{id}/confirm")
-    ResponseEntity<Void> confirm(@PathVariable UUID id, Authentication authentication) {
-        confirm.handle(new ConfirmOrderCommand(id, SecurityUtils.userId(authentication),
-                SecurityUtils.isAdmin(authentication)));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> confirm(@PathVariable UUID id, Authentication authentication) {
+        return results.noContent(confirm.handle(new ConfirmOrderCommand(id, SecurityUtils.userId(authentication),
+                SecurityUtils.isAdmin(authentication))));
     }
 
     @PostMapping("/{id}/cancel")
-    ResponseEntity<Void> cancel(@PathVariable UUID id, Authentication authentication) {
-        cancel.handle(new CancelOrderCommand(id, SecurityUtils.userId(authentication),
-                SecurityUtils.isAdmin(authentication)));
-        return ResponseEntity.noContent().build();
+    ResponseEntity<?> cancel(@PathVariable UUID id, Authentication authentication) {
+        return results.noContent(cancel.handle(new CancelOrderCommand(id, SecurityUtils.userId(authentication),
+                SecurityUtils.isAdmin(authentication))));
     }
 
     @GetMapping
-    PageResponse<OrderView> list(@RequestParam(defaultValue = "0") int page,
-                                 @RequestParam(defaultValue = "20") int size,
-                                 Authentication authentication) {
-        return list.handle(new GetOrdersQuery(SecurityUtils.userId(authentication),
-                SecurityUtils.isAdmin(authentication), page, size));
+    ResponseEntity<?> list(@RequestParam(defaultValue = "0") int page,
+                           @RequestParam(defaultValue = "20") int size,
+                           Authentication authentication) {
+        return results.ok(list.handle(new GetOrdersQuery(SecurityUtils.userId(authentication),
+                SecurityUtils.isAdmin(authentication), page, size)));
     }
 
     @GetMapping("/{id}")
-    OrderView get(@PathVariable UUID id, Authentication authentication) {
-        return get.handle(new GetOrderQuery(id, SecurityUtils.userId(authentication),
-                SecurityUtils.isAdmin(authentication)));
+    ResponseEntity<?> get(@PathVariable UUID id, Authentication authentication) {
+        return results.ok(get.handle(new GetOrderQuery(id, SecurityUtils.userId(authentication),
+                SecurityUtils.isAdmin(authentication))));
     }
 
     public record AddItemRequest(@NotNull UUID productId, @Min(1) int quantity) {
     }
 }
-

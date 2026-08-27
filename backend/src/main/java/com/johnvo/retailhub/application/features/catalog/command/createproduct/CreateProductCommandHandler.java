@@ -1,8 +1,9 @@
 package com.johnvo.retailhub.application.features.catalog.command.createproduct;
 
-import com.johnvo.retailhub.application.common.ConflictException;
+import com.johnvo.retailhub.application.common.ApplicationError;
 import com.johnvo.retailhub.application.common.CreatedId;
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
 import com.johnvo.retailhub.application.features.catalog.common.ProductSearchIndex;
 import com.johnvo.retailhub.application.features.catalog.common.ProductView;
@@ -14,6 +15,7 @@ import com.johnvo.retailhub.domain.catalog.ProductId;
 import com.johnvo.retailhub.domain.catalog.ProductRepository;
 import com.johnvo.retailhub.domain.inventory.InventoryItem;
 import com.johnvo.retailhub.domain.inventory.InventoryRepository;
+import com.johnvo.retailhub.domain.shared.DomainException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -40,20 +42,28 @@ public class CreateProductCommandHandler implements CommandHandler<CreateProduct
 
     @Override
     @Transactional
-    public CreatedId handle(CreateProductCommand command) {
+    public Result<CreatedId> handle(CreateProductCommand command) {
         if (products.findBySku(command.sku()).isPresent()) {
-            throw new ConflictException("A product with this SKU already exists");
+            return Result.failure(new ApplicationError("PRODUCT_SKU_EXISTS",
+                    "A product with this SKU already exists", ErrorType.CONFLICT));
         }
         Category category = categories.findById(new CategoryId(command.categoryId()))
-                .filter(Category::active)
-                .orElseThrow(() -> new ResourceNotFoundException("Active category was not found"));
-        Instant now = clock.instant();
-        Product product = Product.create(ProductId.newId(), command.name(), command.description(),
-                command.sku(), command.price(), category.id(), now);
-        product = products.save(product);
-        inventory.save(InventoryItem.create(product.id(), now));
-        searchIndex.index(ProductView.from(product, category));
-        return new CreatedId(product.id().value());
+                .filter(Category::active).orElse(null);
+        if (category == null) {
+            return Result.failure(new ApplicationError(
+                    "CATEGORY_NOT_FOUND", "Active category was not found", ErrorType.NOT_FOUND));
+        }
+        try {
+            Instant now = clock.instant();
+            Product product = Product.create(ProductId.newId(), command.name(), command.description(),
+                    command.sku(), command.price(), category.id(), now);
+            product = products.save(product);
+            inventory.save(InventoryItem.create(product.id(), now));
+            searchIndex.index(ProductView.from(product, category));
+            return Result.success(new CreatedId(product.id().value()));
+        } catch (DomainException exception) {
+            return Result.failure(new ApplicationError(
+                    "PRODUCT_INVALID", exception.getMessage(), ErrorType.VALIDATION));
+        }
     }
 }
-

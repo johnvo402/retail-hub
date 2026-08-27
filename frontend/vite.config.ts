@@ -1,8 +1,14 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     proxy: {
@@ -14,7 +20,10 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: "./src/test/setup.ts",
+    include: ["tests/**/*.{test,spec}.{ts,tsx}"],
+    setupFiles: "./tests/setup/vitest.setup.ts",
     css: true,
+    pool: "threads",
+    maxWorkers: 1,
   },
 });

@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.common.cqrs;
 
-public interface CommandHandler<C extends Command<R>, R> {
-    R handle(C command);
-}
+import com.johnvo.retailhub.application.common.Result;
 
+public interface CommandHandler<C extends Command<R>, R> {
+    Result<R> handle(C command);
+}

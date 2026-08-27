@@ -1,8 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
-import { authStore } from "../../lib/auth/authStore";
-import LoginPage from "./LoginPage";
+import { authStore } from "@/lib/auth/authStore";
+import LoginPage from "@/features/auth/LoginPage";
 
 describe("LoginPage", () => {
   beforeEach(() => authStore.clear());

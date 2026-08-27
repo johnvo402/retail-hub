@@ -59,8 +59,8 @@ class CreateProductCommandHandlerTest {
         ArgumentCaptor<InventoryItem> inventoryItem = ArgumentCaptor.forClass(InventoryItem.class);
         verify(inventory).save(inventoryItem.capture());
         verify(search).index(any());
-        assertThat(inventoryItem.getValue().productId().value()).isEqualTo(result.id());
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(inventoryItem.getValue().productId().value()).isEqualTo(result.value().id());
         assertThat(inventoryItem.getValue().quantity()).isZero();
     }
 }
-

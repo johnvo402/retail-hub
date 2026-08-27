@@ -1,6 +1,8 @@
 package com.johnvo.retailhub.application.features.auth.command.refresh;
 
-import com.johnvo.retailhub.application.common.UnauthorizedException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
 import com.johnvo.retailhub.application.common.security.TokenService;
 import com.johnvo.retailhub.application.features.auth.common.AuthenticationResult;
@@ -33,22 +35,26 @@ public class RefreshTokenCommandHandler implements CommandHandler<RefreshTokenCo
 
     @Override
     @Transactional
-    public AuthenticationResult handle(RefreshTokenCommand command) {
+    public Result<AuthenticationResult> handle(RefreshTokenCommand command) {
         if (command.refreshToken() == null || command.refreshToken().isBlank()) {
-            throw new UnauthorizedException("Refresh token is missing");
+            return unauthorized("AUTH_REFRESH_TOKEN_MISSING", "Refresh token is missing");
         }
         String hash = tokens.hashRefreshToken(command.refreshToken());
-        AuthSession oldSession = sessions.findActiveByTokenHashForUpdate(hash)
-                .orElseThrow(() -> new UnauthorizedException("Refresh token is invalid"));
+        AuthSession oldSession = sessions.findActiveByTokenHashForUpdate(hash).orElse(null);
+        if (oldSession == null) {
+            return unauthorized("AUTH_REFRESH_TOKEN_INVALID", "Refresh token is invalid");
+        }
         Instant now = clock.instant();
         try {
             oldSession.assertUsable(now);
         } catch (DomainException exception) {
-            throw new UnauthorizedException(exception.getMessage());
+            return unauthorized("AUTH_REFRESH_TOKEN_INVALID", exception.getMessage());
         }
         User user = users.findById(oldSession.userId())
-                .filter(User::active)
-                .orElseThrow(() -> new UnauthorizedException("Account is unavailable"));
+                .filter(User::active).orElse(null);
+        if (user == null) {
+            return unauthorized("AUTH_ACCOUNT_UNAVAILABLE", "Account is unavailable");
+        }
 
         oldSession.revoke(now);
         sessions.save(oldSession);
@@ -56,8 +62,12 @@ public class RefreshTokenCommandHandler implements CommandHandler<RefreshTokenCo
         sessions.save(AuthSession.create(user.id(), refresh.hash(), refresh.expiresAt(),
                 sanitizeUserAgent(command.userAgent()), now));
         TokenService.AccessToken access = tokens.issueAccessToken(user);
-        return new AuthenticationResult(access.value(), access.expiresInSeconds(), UserView.from(user),
-                refresh.value(), refresh.expiresAt());
+        return Result.success(new AuthenticationResult(access.value(), access.expiresInSeconds(), UserView.from(user),
+                refresh.value(), refresh.expiresAt()));
+    }
+
+    private static Result<AuthenticationResult> unauthorized(String code, String message) {
+        return Result.failure(new ApplicationError(code, message, ErrorType.UNAUTHORIZED));
     }
 
     private static String sanitizeUserAgent(String userAgent) {
@@ -67,4 +77,3 @@ public class RefreshTokenCommandHandler implements CommandHandler<RefreshTokenCo
         return userAgent.substring(0, Math.min(userAgent.length(), 500));
     }
 }
-

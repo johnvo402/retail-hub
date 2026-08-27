@@ -1,6 +1,8 @@
 package com.johnvo.retailhub.application.features.inventory.query.getinventory;
 
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
 import com.johnvo.retailhub.application.features.inventory.common.InventoryReadPort;
 import com.johnvo.retailhub.application.features.inventory.common.InventoryView;
@@ -15,9 +17,9 @@ public class GetInventoryQueryHandler implements QueryHandler<GetInventoryQuery,
     }
 
     @Override
-    public InventoryView handle(GetInventoryQuery query) {
-        return inventory.findByProductId(query.productId())
-                .orElseThrow(() -> new ResourceNotFoundException("Inventory item was not found"));
+    public Result<InventoryView> handle(GetInventoryQuery query) {
+        return inventory.findByProductId(query.productId()).map(Result::success)
+                .orElseGet(() -> Result.failure(new ApplicationError(
+                        "INVENTORY_NOT_FOUND", "Inventory item was not found", ErrorType.NOT_FOUND)));
     }
 }
-

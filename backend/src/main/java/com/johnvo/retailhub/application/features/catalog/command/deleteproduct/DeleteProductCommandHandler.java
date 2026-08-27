@@ -1,6 +1,8 @@
 package com.johnvo.retailhub.application.features.catalog.command.deleteproduct;
 
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.CommandHandler;
 import com.johnvo.retailhub.application.features.catalog.common.ProductCache;
 import com.johnvo.retailhub.application.features.catalog.common.ProductSearchIndex;
@@ -29,14 +31,16 @@ public class DeleteProductCommandHandler implements CommandHandler<DeleteProduct
 
     @Override
     @Transactional
-    public Void handle(DeleteProductCommand command) {
-        Product product = products.findById(new ProductId(command.id()))
-                .orElseThrow(() -> new ResourceNotFoundException("Product was not found"));
+    public Result<Void> handle(DeleteProductCommand command) {
+        Product product = products.findById(new ProductId(command.id())).orElse(null);
+        if (product == null) {
+            return Result.failure(new ApplicationError(
+                    "PRODUCT_NOT_FOUND", "Product was not found", ErrorType.NOT_FOUND));
+        }
         product.deactivate(clock.instant());
         products.save(product);
         cache.evict(command.id());
         searchIndex.delete(command.id());
-        return null;
+        return Result.success();
     }
 }
-

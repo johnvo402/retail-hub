@@ -1,7 +1,8 @@
 package com.johnvo.retailhub.application.features.ordering.query.getorder;
 
-import com.johnvo.retailhub.application.common.ForbiddenException;
-import com.johnvo.retailhub.application.common.ResourceNotFoundException;
+import com.johnvo.retailhub.application.common.ApplicationError;
+import com.johnvo.retailhub.application.common.ErrorType;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
 import com.johnvo.retailhub.application.features.ordering.common.OrderReadPort;
 import com.johnvo.retailhub.application.features.ordering.common.OrderView;
@@ -16,13 +17,16 @@ public class GetOrderQueryHandler implements QueryHandler<GetOrderQuery, OrderVi
     }
 
     @Override
-    public OrderView handle(GetOrderQuery query) {
-        OrderView order = orders.findById(query.orderId())
-                .orElseThrow(() -> new ResourceNotFoundException("Order was not found"));
-        if (!query.admin() && !order.customerId().equals(query.actorId())) {
-            throw new ForbiddenException("You cannot view this order");
+    public Result<OrderView> handle(GetOrderQuery query) {
+        OrderView order = orders.findById(query.orderId()).orElse(null);
+        if (order == null) {
+            return Result.failure(new ApplicationError(
+                    "ORDER_NOT_FOUND", "Order was not found", ErrorType.NOT_FOUND));
         }
-        return order;
+        if (!query.admin() && !order.customerId().equals(query.actorId())) {
+            return Result.failure(new ApplicationError(
+                    "ORDER_FORBIDDEN", "You cannot view this order", ErrorType.FORBIDDEN));
+        }
+        return Result.success(order);
     }
 }
-

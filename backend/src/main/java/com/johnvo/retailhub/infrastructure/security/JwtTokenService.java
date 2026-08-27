@@ -1,6 +1,5 @@
 package com.johnvo.retailhub.infrastructure.security;
 
-import com.johnvo.retailhub.application.common.UnauthorizedException;
 import com.johnvo.retailhub.application.common.security.AccessTokenVerifier;
 import com.johnvo.retailhub.application.common.security.TokenService;
 import com.johnvo.retailhub.domain.identity.User;
@@ -28,6 +27,7 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.UUID;
+import java.util.Optional;
 
 @Component
 public class JwtTokenService implements TokenService, AccessTokenVerifier {
@@ -81,14 +81,13 @@ public class JwtTokenService implements TokenService, AccessTokenVerifier {
     }
 
     @Override
-    public AuthenticatedUser verify(String token) {
+    public Optional<AuthenticatedUser> verify(String token) {
         try {
             Jwt jwt = decoder.decode(token);
-            return new AuthenticatedUser(UUID.fromString(jwt.getSubject()),
-                    UserRole.valueOf(jwt.getClaimAsString("role")));
+            return Optional.of(new AuthenticatedUser(UUID.fromString(jwt.getSubject()),
+                    UserRole.valueOf(jwt.getClaimAsString("role"))));
         } catch (JwtException | IllegalArgumentException exception) {
-            throw new UnauthorizedException("Access token is invalid or expired");
+            return Optional.empty();
         }
     }
 }
-

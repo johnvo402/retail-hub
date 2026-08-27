@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.api.controller;
 
 import com.johnvo.retailhub.api.security.SecurityUtils;
+import com.johnvo.retailhub.api.exception.ResultResponseMapper;
 import com.johnvo.retailhub.application.features.auth.command.login.LoginCommand;
 import com.johnvo.retailhub.application.features.auth.command.login.LoginCommandHandler;
 import com.johnvo.retailhub.application.features.auth.command.logout.LogoutCommand;
@@ -48,11 +49,12 @@ public class AuthController {
     private final LogoutAllCommandHandler logoutAll;
     private final GetCurrentUserQueryHandler currentUser;
     private final SecurityProperties properties;
+    private final ResultResponseMapper results;
 
     public AuthController(RegisterCommandHandler register, LoginCommandHandler login,
                           RefreshTokenCommandHandler refresh, LogoutCommandHandler logout,
                           LogoutAllCommandHandler logoutAll, GetCurrentUserQueryHandler currentUser,
-                          SecurityProperties properties) {
+                          SecurityProperties properties, ResultResponseMapper results) {
         this.register = register;
         this.login = login;
         this.refresh = refresh;
@@ -60,44 +62,45 @@ public class AuthController {
         this.logoutAll = logoutAll;
         this.currentUser = currentUser;
         this.properties = properties;
+        this.results = results;
     }
 
     @PostMapping("/register")
-    ResponseEntity<UserView> register(@Valid @RequestBody RegisterRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(register.handle(new RegisterCommand(request.email(), request.password())));
+    ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
+        return results.map(register.handle(new RegisterCommand(request.email(), request.password())),
+                user -> ResponseEntity.status(HttpStatus.CREATED).body(user));
     }
 
     @PostMapping("/login")
-    ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
-        AuthenticationResult result = login.handle(new LoginCommand(request.email(), request.password(),
-                servletRequest.getHeader("User-Agent")));
-        return authenticatedResponse(result);
+    ResponseEntity<?> login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        return results.map(login.handle(new LoginCommand(request.email(), request.password(),
+                servletRequest.getHeader("User-Agent"))), this::authenticatedResponse);
     }
 
     @PostMapping("/refresh")
-    ResponseEntity<AuthResponse> refresh(
+    ResponseEntity<?> refresh(
             @CookieValue(name = REFRESH_COOKIE, required = false) String token,
             HttpServletRequest request) {
-        return authenticatedResponse(refresh.handle(new RefreshTokenCommand(token,
-                request.getHeader("User-Agent"))));
+        return results.map(refresh.handle(new RefreshTokenCommand(token,
+                request.getHeader("User-Agent"))), this::authenticatedResponse);
     }
 
     @PostMapping("/logout")
-    ResponseEntity<Void> logout(@CookieValue(name = REFRESH_COOKIE, required = false) String token) {
-        logout.handle(new LogoutCommand(token));
-        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, clearCookie().toString()).build();
+    ResponseEntity<?> logout(@CookieValue(name = REFRESH_COOKIE, required = false) String token) {
+        return results.map(logout.handle(new LogoutCommand(token)), ignored -> ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, clearCookie().toString()).build());
     }
 
     @PostMapping("/logout-all")
-    ResponseEntity<Void> logoutAll(Authentication authentication) {
-        logoutAll.handle(new LogoutAllCommand(SecurityUtils.userId(authentication)));
-        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, clearCookie().toString()).build();
+    ResponseEntity<?> logoutAll(Authentication authentication) {
+        return results.map(logoutAll.handle(new LogoutAllCommand(SecurityUtils.userId(authentication))),
+                ignored -> ResponseEntity.noContent()
+                        .header(HttpHeaders.SET_COOKIE, clearCookie().toString()).build());
     }
 
     @GetMapping("/me")
-    UserView me(Authentication authentication) {
-        return currentUser.handle(new GetCurrentUserQuery(SecurityUtils.userId(authentication)));
+    ResponseEntity<?> me(Authentication authentication) {
+        return results.ok(currentUser.handle(new GetCurrentUserQuery(SecurityUtils.userId(authentication))));
     }
 
     private ResponseEntity<AuthResponse> authenticatedResponse(AuthenticationResult result) {
@@ -148,4 +151,3 @@ public class AuthController {
     public record AuthResponse(String accessToken, long expiresIn, UserView user) {
     }
 }
-

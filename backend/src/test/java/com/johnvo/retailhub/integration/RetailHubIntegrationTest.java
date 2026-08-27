@@ -2,12 +2,14 @@ package com.johnvo.retailhub.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.johnvo.retailhub.application.common.ConflictException;
-import com.johnvo.retailhub.application.features.ordering.common.OrderEventStore;
-import com.johnvo.retailhub.domain.ordering.Order;
 import com.johnvo.retailhub.domain.ordering.OrderId;
-import com.johnvo.retailhub.domain.ordering.events.OrderEvent;
-import com.johnvo.retailhub.infrastructure.eventstore.SpringDataDomainEventRepository;
+import com.johnvo.retailhub.domain.ordering.Order;
+import com.johnvo.retailhub.domain.ordering.OrderRepository;
+import com.johnvo.retailhub.infrastructure.persistence.jpa.ordering.OrderJpaEntity;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.RollbackException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,8 +50,8 @@ class RetailHubIntegrationTest {
 
     @Autowired ObjectMapper objectMapper;
     @Autowired StringRedisTemplate redis;
-    @Autowired SpringDataDomainEventRepository storedEvents;
-    @Autowired OrderEventStore eventStore;
+    @Autowired OrderRepository orders;
+    @Autowired EntityManagerFactory entityManagerFactory;
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -132,7 +134,43 @@ class RetailHubIntegrationTest {
         assertThat(order.get("status").asText()).isEqualTo("CONFIRMED");
         assertThat(order.get("totalAmount").decimalValue()).isEqualByComparingTo("319.80");
         assertThat(order.get("items")).hasSize(1);
-        assertThat(storedEvents.findByAggregateIdOrderByVersionAsc(orderId)).hasSize(3);
+        assertThat(orders.findById(new OrderId(orderId))).get()
+                .extracting(saved -> saved.items().size()).isEqualTo(1);
+
+        HttpResponse<String> orderList = get("/api/orders", accessToken);
+        assertThat(orderList.statusCode()).isEqualTo(200);
+        assertThat(json(orderList).get("items").get(0).get("id").asText()).isEqualTo(orderId.toString());
+
+        HttpResponse<String> emptyOrderResponse = post("/api/orders", "", accessToken, null);
+        UUID emptyOrderId = UUID.fromString(json(emptyOrderResponse).get("id").asText());
+        HttpResponse<String> emptyConfirm = post("/api/orders/" + emptyOrderId + "/confirm", "", accessToken, null);
+        assertThat(emptyConfirm.statusCode()).isEqualTo(422);
+        assertThat(json(emptyConfirm).get("type").asText()).isEqualTo("ORDER_EMPTY");
+
+        HttpResponse<String> invalidItem = post("/api/orders/" + emptyOrderId + "/items",
+                "{\"productId\":\"" + productId + "\",\"quantity\":0}", accessToken, null);
+        assertThat(invalidItem.statusCode()).isEqualTo(400);
+        assertThat(get("/api/orders/" + UUID.randomUUID(), accessToken).statusCode()).isEqualTo(404);
+
+        HttpResponse<String> mutableOrderResponse = post("/api/orders", "", accessToken, null);
+        UUID mutableOrderId = UUID.fromString(json(mutableOrderResponse).get("id").asText());
+        HttpResponse<String> mutableItemResponse = post("/api/orders/" + mutableOrderId + "/items",
+                "{\"productId\":\"" + productId + "\",\"quantity\":1}", accessToken, null);
+        UUID mutableItemId = UUID.fromString(json(mutableItemResponse).get("id").asText());
+        assertThat(delete("/api/orders/" + mutableOrderId + "/items/" + mutableItemId, accessToken).statusCode())
+                .isEqualTo(204);
+        assertThat(post("/api/orders/" + mutableOrderId + "/cancel", "", accessToken, null).statusCode())
+                .isEqualTo(204);
+        assertThat(json(get("/api/orders/" + mutableOrderId, accessToken)).get("status").asText())
+                .isEqualTo("CANCELLED");
+
+        assertThat(post("/api/auth/register",
+                "{\"email\":\"other@retailhub.test\",\"password\":\"Integration123!\"}", null, null)
+                .statusCode()).isEqualTo(201);
+        HttpResponse<String> otherLogin = post("/api/auth/login",
+                "{\"email\":\"other@retailhub.test\",\"password\":\"Integration123!\"}", null, null);
+        String otherAccessToken = json(otherLogin).get("accessToken").asText();
+        assertThat(get("/api/orders/" + orderId, otherAccessToken).statusCode()).isEqualTo(403);
 
         HttpResponse<String> logout = post("/api/auth/logout", "", null, rotatedCookie);
         assertThat(logout.statusCode()).isEqualTo(204);
@@ -141,21 +179,45 @@ class RetailHubIntegrationTest {
     }
 
     @Test
-    void eventStoreRejectsConcurrentAppendAtSameExpectedVersion() {
-        Order original = Order.create(OrderId.newId(), UUID.randomUUID(), Instant.now());
-        List<OrderEvent> created = original.getUncommittedEvents().stream().map(event -> (OrderEvent) event).toList();
-        eventStore.append(original.id().value(), 0, created);
+    void orderPersistenceUsesJpaOptimisticLocking() throws Exception {
+        HttpResponse<String> login = post("/api/auth/login",
+                "{\"email\":\"admin@retailhub.test\",\"password\":\"Integration123!\"}", null, null);
+        String accessToken = json(login).get("accessToken").asText();
+        UUID orderId = UUID.fromString(json(post("/api/orders", "", accessToken, null)).get("id").asText());
 
-        Order first = Order.rehydrate(eventStore.load(original.id().value()));
-        Order second = Order.rehydrate(eventStore.load(original.id().value()));
-        first.cancel(Instant.now());
-        second.cancel(Instant.now());
-        eventStore.append(first.id().value(), 1,
-                first.getUncommittedEvents().stream().map(event -> (OrderEvent) event).toList());
+        EntityManager firstManager = entityManagerFactory.createEntityManager();
+        EntityManager secondManager = entityManagerFactory.createEntityManager();
+        try {
+            firstManager.getTransaction().begin();
+            secondManager.getTransaction().begin();
+            OrderJpaEntity first = firstManager.find(OrderJpaEntity.class, orderId);
+            OrderJpaEntity second = secondManager.find(OrderJpaEntity.class, orderId);
 
-        assertThatThrownBy(() -> eventStore.append(second.id().value(), 1,
-                second.getUncommittedEvents().stream().map(event -> (OrderEvent) event).toList()))
-                .isInstanceOf(ConflictException.class);
+            Order firstDomain = Order.reconstitute(new OrderId(first.getId()), first.getCustomerId(),
+                    first.getStatus(), List.of(), first.getCreatedAt(), first.getUpdatedAt(),
+                    first.getConfirmedAt(), first.getCancelledAt());
+            Order secondDomain = Order.reconstitute(new OrderId(second.getId()), second.getCustomerId(),
+                    second.getStatus(), List.of(), second.getCreatedAt(), second.getUpdatedAt(),
+                    second.getConfirmedAt(), second.getCancelledAt());
+            firstDomain.cancel(Instant.now());
+            secondDomain.cancel(Instant.now().plusSeconds(1));
+            first.update(firstDomain);
+            second.update(secondDomain);
+
+            firstManager.getTransaction().commit();
+            assertThat(first.getVersion()).isEqualTo(1);
+            assertThatThrownBy(secondManager.getTransaction()::commit)
+                    .isInstanceOfAny(RollbackException.class, OptimisticLockException.class);
+        } finally {
+            if (firstManager.getTransaction().isActive()) {
+                firstManager.getTransaction().rollback();
+            }
+            if (secondManager.getTransaction().isActive()) {
+                secondManager.getTransaction().rollback();
+            }
+            firstManager.close();
+            secondManager.close();
+        }
     }
 
     private JsonNode waitForSearch(String query) throws Exception {
@@ -199,6 +261,13 @@ class RetailHubIntegrationTest {
         return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    private HttpResponse<String> delete(String path, String accessToken)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri(path)).DELETE();
+        authorize(builder, accessToken);
+        return client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private static void authorize(HttpRequest.Builder builder, String accessToken) {
         if (accessToken != null) {
             builder.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken);
@@ -221,4 +290,3 @@ class RetailHubIntegrationTest {
                           UUID categoryId, boolean active) {
     }
 }
-

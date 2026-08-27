@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.application.features.catalog.query.getcategories;
 
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
+import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.features.catalog.common.CatalogReadPort;
 import com.johnvo.retailhub.application.features.catalog.common.CategoryView;
 import org.springframework.stereotype.Service;
@@ -16,8 +17,7 @@ public class GetCategoriesQueryHandler implements QueryHandler<GetCategoriesQuer
     }
 
     @Override
-    public List<CategoryView> handle(GetCategoriesQuery query) {
-        return catalog.findActiveCategories();
+    public Result<List<CategoryView>> handle(GetCategoriesQuery query) {
+        return Result.success(catalog.findActiveCategories());
     }
 }
-
