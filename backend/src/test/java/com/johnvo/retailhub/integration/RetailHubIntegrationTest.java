@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.johnvo.retailhub.domain.ordering.OrderId;
 import com.johnvo.retailhub.domain.ordering.Order;
 import com.johnvo.retailhub.domain.ordering.OrderRepository;
+import com.johnvo.retailhub.infrastructure.persistence.jpa.inventory.InventoryJpaEntity;
 import com.johnvo.retailhub.infrastructure.persistence.jpa.ordering.OrderJpaEntity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -129,6 +130,7 @@ class RetailHubIntegrationTest {
         assertThat(addItem.statusCode()).isEqualTo(201);
         HttpResponse<String> confirm = post("/api/orders/" + orderId + "/confirm", "", accessToken, null);
         assertThat(confirm.statusCode()).isEqualTo(204);
+        assertThat(json(get("/api/inventory/" + productId, accessToken)).get("quantity").asInt()).isEqualTo(8);
 
         JsonNode order = json(get("/api/orders/" + orderId, accessToken));
         assertThat(order.get("status").asText()).isEqualTo("CONFIRMED");
@@ -136,6 +138,10 @@ class RetailHubIntegrationTest {
         assertThat(order.get("items")).hasSize(1);
         assertThat(orders.findById(new OrderId(orderId))).get()
                 .extracting(saved -> saved.items().size()).isEqualTo(1);
+        HttpResponse<String> secondConfirm = post("/api/orders/" + orderId + "/confirm", "", accessToken, null);
+        assertThat(secondConfirm.statusCode()).isEqualTo(422);
+        assertThat(json(secondConfirm).get("type").asText()).isEqualTo("ORDER_INVALID_STATE");
+        assertThat(json(get("/api/inventory/" + productId, accessToken)).get("quantity").asInt()).isEqualTo(8);
 
         HttpResponse<String> orderList = get("/api/orders", accessToken);
         assertThat(orderList.statusCode()).isEqualTo(200);
@@ -171,11 +177,55 @@ class RetailHubIntegrationTest {
                 "{\"email\":\"other@retailhub.test\",\"password\":\"Integration123!\"}", null, null);
         String otherAccessToken = json(otherLogin).get("accessToken").asText();
         assertThat(get("/api/orders/" + orderId, otherAccessToken).statusCode()).isEqualTo(403);
+        assertThat(post("/api/orders/" + orderId + "/confirm", "", otherAccessToken, null).statusCode())
+                .isEqualTo(403);
 
         HttpResponse<String> logout = post("/api/auth/logout", "", null, rotatedCookie);
         assertThat(logout.statusCode()).isEqualTo(204);
         assertThat(logout.headers().firstValue("set-cookie").orElseThrow()).contains("Max-Age=0");
         assertThat(post("/api/auth/refresh", "", null, rotatedCookie).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void orderConfirmationIsAtomicWhenAnyProductHasInsufficientStock() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String accessToken = json(post("/api/auth/login",
+                "{\"email\":\"admin@retailhub.test\",\"password\":\"Integration123!\"}", null, null))
+                .get("accessToken").asText();
+
+        HttpResponse<String> categoryResponse = post("/api/categories",
+                "{\"name\":\"Atomic " + suffix + "\",\"description\":\"Atomic stock test\",\"active\":true}",
+                accessToken, null);
+        UUID categoryId = UUID.fromString(json(categoryResponse).get("id").asText());
+        UUID firstProductId = UUID.fromString(json(post("/api/products",
+                objectMapper.writeValueAsString(new ProductPayload("Available " + suffix, "Enough stock",
+                        "ATOMIC-A-" + suffix, BigDecimal.TEN, categoryId, true)), accessToken, null))
+                .get("id").asText());
+        UUID secondProductId = UUID.fromString(json(post("/api/products",
+                objectMapper.writeValueAsString(new ProductPayload("Scarce " + suffix, "Insufficient stock",
+                        "ATOMIC-B-" + suffix, BigDecimal.TEN, categoryId, true)), accessToken, null))
+                .get("id").asText());
+        assertThat(post("/api/inventory/" + firstProductId + "/increase",
+                "{\"quantity\":10}", accessToken, null).statusCode()).isEqualTo(200);
+        assertThat(post("/api/inventory/" + secondProductId + "/increase",
+                "{\"quantity\":2}", accessToken, null).statusCode()).isEqualTo(200);
+
+        UUID orderId = UUID.fromString(json(post("/api/orders", "", accessToken, null)).get("id").asText());
+        assertThat(post("/api/orders/" + orderId + "/items",
+                "{\"productId\":\"" + firstProductId + "\",\"quantity\":3}", accessToken, null).statusCode())
+                .isEqualTo(201);
+        assertThat(post("/api/orders/" + orderId + "/items",
+                "{\"productId\":\"" + secondProductId + "\",\"quantity\":3}", accessToken, null).statusCode())
+                .isEqualTo(201);
+
+        HttpResponse<String> confirmation = post("/api/orders/" + orderId + "/confirm", "", accessToken, null);
+
+        assertThat(confirmation.statusCode()).isEqualTo(422);
+        assertThat(json(confirmation).get("type").asText()).isEqualTo("INVENTORY_INSUFFICIENT_STOCK");
+        assertThat(json(confirmation).get("detail").asText()).contains("Scarce " + suffix);
+        assertThat(json(get("/api/inventory/" + firstProductId, accessToken)).get("quantity").asInt()).isEqualTo(10);
+        assertThat(json(get("/api/inventory/" + secondProductId, accessToken)).get("quantity").asInt()).isEqualTo(2);
+        assertThat(json(get("/api/orders/" + orderId, accessToken)).get("status").asText()).isEqualTo("DRAFT");
     }
 
     @Test
@@ -206,6 +256,49 @@ class RetailHubIntegrationTest {
 
             firstManager.getTransaction().commit();
             assertThat(first.getVersion()).isEqualTo(1);
+            assertThatThrownBy(secondManager.getTransaction()::commit)
+                    .isInstanceOfAny(RollbackException.class, OptimisticLockException.class);
+        } finally {
+            if (firstManager.getTransaction().isActive()) {
+                firstManager.getTransaction().rollback();
+            }
+            if (secondManager.getTransaction().isActive()) {
+                secondManager.getTransaction().rollback();
+            }
+            firstManager.close();
+            secondManager.close();
+        }
+    }
+
+    @Test
+    void inventoryPersistenceUsesJpaOptimisticLocking() throws Exception {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String accessToken = json(post("/api/auth/login",
+                "{\"email\":\"admin@retailhub.test\",\"password\":\"Integration123!\"}", null, null))
+                .get("accessToken").asText();
+        UUID categoryId = UUID.fromString(json(post("/api/categories",
+                "{\"name\":\"Concurrency " + suffix + "\",\"description\":\"Concurrency test\",\"active\":true}",
+                accessToken, null)).get("id").asText());
+        UUID productId = UUID.fromString(json(post("/api/products",
+                objectMapper.writeValueAsString(new ProductPayload("Concurrent " + suffix, "Concurrent stock",
+                        "LOCK-" + suffix, BigDecimal.TEN, categoryId, true)), accessToken, null))
+                .get("id").asText());
+        assertThat(post("/api/inventory/" + productId + "/increase",
+                "{\"quantity\":5}", accessToken, null).statusCode()).isEqualTo(200);
+
+        EntityManager firstManager = entityManagerFactory.createEntityManager();
+        EntityManager secondManager = entityManagerFactory.createEntityManager();
+        try {
+            firstManager.getTransaction().begin();
+            secondManager.getTransaction().begin();
+            InventoryJpaEntity first = firstManager.find(InventoryJpaEntity.class, productId);
+            InventoryJpaEntity second = secondManager.find(InventoryJpaEntity.class, productId);
+            long initialVersion = first.getVersion();
+            first.update(4, Instant.now());
+            second.update(3, Instant.now().plusSeconds(1));
+
+            firstManager.getTransaction().commit();
+            assertThat(first.getVersion()).isGreaterThan(initialVersion);
             assertThatThrownBy(secondManager.getTransaction()::commit)
                     .isInstanceOfAny(RollbackException.class, OptimisticLockException.class);
         } finally {

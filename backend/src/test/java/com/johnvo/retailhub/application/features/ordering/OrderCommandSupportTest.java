@@ -2,6 +2,7 @@ package com.johnvo.retailhub.application.features.ordering;
 
 import com.johnvo.retailhub.application.common.ErrorType;
 import com.johnvo.retailhub.application.features.ordering.common.OrderCommandSupport;
+import com.johnvo.retailhub.domain.inventory.InventoryRepository;
 import com.johnvo.retailhub.domain.ordering.Order;
 import com.johnvo.retailhub.domain.ordering.OrderId;
 import com.johnvo.retailhub.domain.ordering.OrderRepository;
@@ -26,12 +27,13 @@ class OrderCommandSupportTest {
     private static final Instant NOW = Instant.parse("2026-08-26T00:00:00Z");
 
     @Mock OrderRepository repository;
+    @Mock InventoryRepository inventory;
     private OrderCommandSupport support;
     private Order order;
 
     @BeforeEach
     void setUp() {
-        support = new OrderCommandSupport(repository);
+        support = new OrderCommandSupport(repository, inventory);
         order = Order.create(OrderId.newId(), UUID.randomUUID(), NOW);
     }
 

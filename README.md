@@ -289,9 +289,9 @@ origin, product cache TTL, and optional initial administrator are configurable.
 - Creating a product creates a zero-quantity inventory row.
 - Order item price/name/SKU snapshots come from the server-side product aggregate;
   clients cannot submit their own price.
-- Order confirmation does not automatically decrement inventory because the source
-  design defines these workflows independently and does not specify reservation or
-  fulfillment semantics.
+- Order confirmation atomically deducts inventory for every order item. Insufficient
+  stock prevents confirmation and leaves both inventory and the order unchanged;
+  stock is not reserved before confirmation.
 - Search/cache projections update synchronously. PostgreSQL remains their source of
   truth, and the admin reindex endpoint can rebuild Elasticsearch.
 - True cross-site cookie deployments require an explicit CSRF strategy and an

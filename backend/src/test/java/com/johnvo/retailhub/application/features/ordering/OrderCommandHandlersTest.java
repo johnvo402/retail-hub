@@ -5,6 +5,7 @@ import com.johnvo.retailhub.application.features.ordering.command.confirmorder.C
 import com.johnvo.retailhub.application.features.ordering.command.confirmorder.ConfirmOrderCommandHandler;
 import com.johnvo.retailhub.application.features.ordering.command.createorder.CreateOrderCommand;
 import com.johnvo.retailhub.application.features.ordering.command.createorder.CreateOrderCommandHandler;
+import com.johnvo.retailhub.application.features.inventory.common.InventoryConcurrencyException;
 import com.johnvo.retailhub.application.features.ordering.common.OrderCommandSupport;
 import com.johnvo.retailhub.application.features.ordering.common.OrderConcurrencyException;
 import com.johnvo.retailhub.domain.ordering.Order;
@@ -47,13 +48,26 @@ class OrderCommandHandlersTest {
     @Test
     void concurrentWriteBecomesConflictResult() {
         doThrow(new OrderConcurrencyException(new IllegalStateException("stale")))
-                .when(support).updateOwned(any(), any(), anyBoolean(), any());
+                .when(support).confirmOwned(any(), any(), anyBoolean(), any());
         ConfirmOrderCommandHandler handler = new ConfirmOrderCommandHandler(support, CLOCK);
 
         var result = handler.handle(new ConfirmOrderCommand(UUID.randomUUID(), UUID.randomUUID(), false));
 
         assertThat(result.isFailure()).isTrue();
         assertThat(result.error().code()).isEqualTo("ORDER_CONCURRENCY_CONFLICT");
+        assertThat(result.error().type()).isEqualTo(ErrorType.CONFLICT);
+    }
+
+    @Test
+    void concurrentInventoryWriteBecomesConflictResult() {
+        doThrow(new InventoryConcurrencyException(new IllegalStateException("stale")))
+                .when(support).confirmOwned(any(), any(), anyBoolean(), any());
+        ConfirmOrderCommandHandler handler = new ConfirmOrderCommandHandler(support, CLOCK);
+
+        var result = handler.handle(new ConfirmOrderCommand(UUID.randomUUID(), UUID.randomUUID(), false));
+
+        assertThat(result.isFailure()).isTrue();
+        assertThat(result.error().code()).isEqualTo("INVENTORY_CONCURRENCY_CONFLICT");
         assertThat(result.error().type()).isEqualTo(ErrorType.CONFLICT);
     }
 }

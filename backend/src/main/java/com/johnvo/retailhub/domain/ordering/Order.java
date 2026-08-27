@@ -70,13 +70,17 @@ public final class Order {
     }
 
     public void confirm(Instant now) {
+        validateConfirmation();
+        confirmedAt = Objects.requireNonNull(now, "Confirmation time is required");
+        updatedAt = now;
+        status = OrderStatus.CONFIRMED;
+    }
+
+    public void validateConfirmation() {
         ensureDraft();
         if (items.isEmpty()) {
             throw new DomainException("Cannot confirm an order without items");
         }
-        confirmedAt = Objects.requireNonNull(now, "Confirmation time is required");
-        updatedAt = now;
-        status = OrderStatus.CONFIRMED;
     }
 
     public void cancel(Instant now) {

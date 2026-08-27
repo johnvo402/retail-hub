@@ -1,5 +1,6 @@
 package com.johnvo.retailhub.api.exception;
 
+import com.johnvo.retailhub.application.features.inventory.common.InventoryConcurrencyException;
 import com.johnvo.retailhub.domain.shared.DomainException;
 import jakarta.persistence.OptimisticLockException;
 import jakarta.validation.ConstraintViolationException;
@@ -49,7 +50,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({ObjectOptimisticLockingFailureException.class, OptimisticLockException.class,
-            DataIntegrityViolationException.class})
+            InventoryConcurrencyException.class, DataIntegrityViolationException.class})
     ResponseEntity<ApiProblem> conflict(Exception exception) {
         return problem(HttpStatus.CONFLICT, "CONFLICT", "Conflict",
                 "The resource changed concurrently or conflicts with existing data", Map.of());
