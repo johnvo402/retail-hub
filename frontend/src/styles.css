@@ -129,6 +129,11 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .search-field input { border: 0; outline: 0; box-shadow: none; }
 .select-field { display: grid; gap: 5px; min-width: 190px; }
 .select-field span, .field label, .add-item-form label span { color: var(--primary-dark); font-size: .8rem; font-weight: 600; }
+.status-filter { min-width: 145px; }
+.price-filter { width: 140px; min-width: 130px; }
+.sort-filter { min-width: 180px; }
+.filter-actions { display: flex; align-items: center; gap: 8px; }
+.filter-error { flex: 1 0 100%; color: var(--danger); font-size: .76rem; line-height: 1.4; }
 .result-count { margin-left: auto; padding: 0 8px 11px; color: var(--muted-text); font-size: .8rem; }
 .product-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .product-card { display: flex; min-height: 230px; flex-direction: column; justify-content: space-between; gap: 20px; padding: 20px; background: white; border: 1px solid var(--border); border-radius: var(--radius); transition: border-color var(--transition), background var(--transition); }
@@ -274,6 +279,9 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .metric-card { min-height: 94px; }
   .toolbar { align-items: stretch; }
   .search-field, .select-field { min-width: 100%; }
+  .price-filter { width: 100%; }
+  .filter-actions { width: 100%; }
+  .filter-actions .button { flex: 1; }
   .result-count { margin: 0; padding: 3px; }
   .field-wide { grid-column: auto; }
   .inline-fields, .add-item-form { grid-template-columns: 1fr; }

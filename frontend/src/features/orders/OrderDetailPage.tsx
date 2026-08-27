@@ -15,7 +15,7 @@ export default function OrderDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const queryClient = useQueryClient();
   const order = useQuery({ queryKey: ["order", id], queryFn: () => getOrder(id), enabled: !!id });
-  const products = useQuery({ queryKey: ["products", "order-picker"], queryFn: () => listProducts(0) });
+  const products = useQuery({ queryKey: ["products", "order-picker"], queryFn: () => listProducts({ active: true }) });
   useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const refresh = async () => {
     await Promise.all([queryClient.invalidateQueries({ queryKey: ["order", id] }), queryClient.invalidateQueries({ queryKey: ["orders"] })]);

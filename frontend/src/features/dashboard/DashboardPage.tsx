@@ -9,7 +9,7 @@ import { listOrders } from "../orders/orderApi";
 import { listProducts } from "../products/productApi";
 
 export default function DashboardPage() {
-  const products = useQuery({ queryKey: ["products", "dashboard"], queryFn: () => listProducts(0) });
+  const products = useQuery({ queryKey: ["products", "dashboard"], queryFn: () => listProducts({ active: true }) });
   const inventory = useQuery({ queryKey: ["inventory", "dashboard"], queryFn: () => listInventory(0) });
   const orders = useQuery({ queryKey: ["orders", "dashboard"], queryFn: () => listOrders(0) });
 
@@ -65,4 +65,3 @@ export default function DashboardPage() {
     </div>
   </div>;
 }
-
