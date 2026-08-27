@@ -30,7 +30,7 @@ export function AppShell() {
 
   async function handleLogout() {
     setLoggingOut(true);
-    await logout();
+    await logout().catch(() => undefined);
     navigate("/login", { replace: true });
   }
 
@@ -54,11 +54,14 @@ export function AppShell() {
         </NavLink>)}
       </nav>
       <div className="account-panel">
-        <span className="account-avatar" aria-hidden="true">{auth.user?.email.charAt(0).toUpperCase()}</span>
-        <div className="account-copy">
-          <strong>{auth.user?.email}</strong>
-          <span>{auth.user?.role === "ADMIN" ? "Administrator" : "Team member"}</span>
-        </div>
+        <NavLink className={({ isActive }) => `account-link ${isActive ? "account-link-active" : ""}`}
+          to="/account" onClick={() => setMenuOpen(false)} aria-label="Open account and security">
+          <span className="account-avatar" aria-hidden="true">{auth.user?.email.charAt(0).toUpperCase()}</span>
+          <span className="account-copy">
+            <strong>{auth.user?.email}</strong>
+            <span>{auth.user?.role === "ADMIN" ? "Administrator" : "Team member"}</span>
+          </span>
+        </NavLink>
         <button className="icon-button" type="button" aria-label="Sign out" disabled={loggingOut}
           onClick={handleLogout}><SignOut size={19} aria-hidden="true" /></button>
       </div>

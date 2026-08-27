@@ -30,6 +30,9 @@ export const authStore = {
   },
   setAuthenticated: (accessToken: string, user: User) =>
     update({ accessToken, user, status: "authenticated" }),
+  setUser: (user: User) => {
+    if (state.accessToken) update({ ...state, user, status: "authenticated" });
+  },
   setAccessToken: (accessToken: string) =>
     update({ ...state, accessToken, status: state.user ? "authenticated" : "initializing" }),
   clear: () => update({ accessToken: null, user: null, status: "unauthenticated" }),
@@ -39,4 +42,3 @@ export const authStore = {
 export function useAuthState() {
   return useSyncExternalStore(authStore.subscribe, authStore.getSnapshot, authStore.getSnapshot);
 }
-

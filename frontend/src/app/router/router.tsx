@@ -5,6 +5,7 @@ import { ProtectedRoute } from "./ProtectedRoute";
 import { LoadingState } from "../../components/States";
 
 const LoginPage = lazy(() => import("../../features/auth/LoginPage"));
+const AccountPage = lazy(() => import("../../features/account/AccountPage"));
 const DashboardPage = lazy(() => import("../../features/dashboard/DashboardPage"));
 const ProductsPage = lazy(() => import("../../features/products/ProductsPage"));
 const ProductDetailPage = lazy(() => import("../../features/products/ProductDetailPage"));
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       element: <AppShell />,
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
+        { path: "/account", element: pending(<AccountPage />) },
         { path: "/dashboard", element: pending(<DashboardPage />) },
         { path: "/products", element: pending(<ProductsPage />) },
         { path: "/products/new", element: pending(<ProductFormPage />) },

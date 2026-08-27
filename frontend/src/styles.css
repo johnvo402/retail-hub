@@ -63,7 +63,9 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .nav-link { display: flex; min-height: 44px; align-items: center; gap: 12px; padding: 10px 12px; color: #cbd5e1; border-radius: 8px; font-size: .92rem; font-weight: 500; transition: color var(--transition), background var(--transition); }
 .nav-link:hover { color: white; background: #334155; }
 .nav-link-active { color: white; background: var(--accent); }
-.account-panel { display: grid; grid-template-columns: 34px minmax(0, 1fr) 40px; gap: 9px; align-items: center; margin-top: auto; padding-top: 18px; border-top: 1px solid #334155; }
+.account-panel { display: grid; grid-template-columns: minmax(0, 1fr) 40px; gap: 9px; align-items: center; margin-top: auto; padding-top: 18px; border-top: 1px solid #334155; }
+.account-link { display: grid; min-width: 0; min-height: 44px; grid-template-columns: 34px minmax(0, 1fr); gap: 9px; align-items: center; padding: 5px; border-radius: 8px; transition: background var(--transition); }
+.account-link:hover, .account-link-active { background: #334155; }
 .account-avatar { display: grid; width: 34px; height: 34px; place-items: center; color: #064e3b; background: #a7f3d0; border-radius: 50%; font-weight: 700; }
 .account-copy { min-width: 0; display: grid; gap: 2px; }
 .account-copy strong { overflow: hidden; color: white; font-size: .76rem; text-overflow: ellipsis; }
@@ -169,6 +171,26 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .detail-card strong { font-size: .86rem; }
 .detail-price strong { font-size: 1.35rem; color: var(--accent); }
 
+.account-layout { display: grid; grid-template-columns: minmax(260px, .75fr) minmax(0, 1.45fr); gap: 18px; align-items: start; }
+.account-section-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.account-section-heading h2, .security-copy h3 { margin: 0; }
+.account-section-heading .eyebrow { margin-bottom: 3px; }
+.account-section-icon, .security-row-icon { display: grid; flex: 0 0 auto; place-items: center; color: #065f46; background: var(--accent-soft); border-radius: 9px; }
+.account-section-icon { width: 42px; height: 42px; }
+.account-details { display: grid; gap: 0; margin: 0; }
+.account-details div { display: grid; gap: 5px; padding: 14px 0; border-top: 1px solid var(--border); }
+.account-details dt { color: var(--muted-text); font-size: .72rem; font-weight: 600; }
+.account-details dd { margin: 0; color: var(--primary-dark); font-size: .88rem; font-weight: 600; }
+.account-sync { margin: 14px 0 0; color: var(--muted-text); font-size: .75rem; }
+.account-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.security-list { display: grid; }
+.security-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 18px 0; border-top: 1px solid var(--border); }
+.security-copy { display: flex; min-width: 0; gap: 12px; align-items: flex-start; }
+.security-row-icon { width: 36px; height: 36px; }
+.security-copy h3 { color: var(--primary-dark); font-size: .92rem; }
+.security-copy p { max-width: 620px; margin: 5px 0 0; color: var(--muted-text); font-size: .78rem; line-height: 1.55; }
+.security-error { grid-column: 1 / -1; }
+
 .form-panel { padding: clamp(20px, 4vw, 34px); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .field { display: grid; align-content: start; gap: 7px; }
@@ -263,6 +285,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .mobile-brand { display: flex; align-items: center; gap: 7px; font-weight: 700; }
   .main-content { padding: 28px 20px 54px; }
   .dashboard-grid { grid-template-columns: 1fr; }
+  .account-layout { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: repeat(2, 1fr); }
   .auth-page { grid-template-columns: 1fr; }
   .auth-story { min-height: 330px; }
@@ -284,6 +307,9 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
   .filter-actions .button { flex: 1; }
   .result-count { margin: 0; padding: 3px; }
   .field-wide { grid-column: auto; }
+  .security-row { grid-template-columns: 1fr; }
+  .security-row > .button { width: 100%; }
+  .account-error { align-items: stretch; flex-direction: column; }
   .inline-fields, .add-item-form { grid-template-columns: 1fr; }
   .form-actions { flex-direction: column-reverse; }
   .form-actions .button { width: 100%; }

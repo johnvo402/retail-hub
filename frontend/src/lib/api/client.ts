@@ -53,8 +53,9 @@ api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiProblem>) => {
     const config = error.config as RetriableConfig | undefined;
-    const isAuthRequest = config?.url?.startsWith("/auth/");
-    if (error.response?.status !== 401 || !config || config._retry || isAuthRequest) {
+    const cannotRefresh = ["/auth/login", "/auth/register", "/auth/refresh"]
+      .some((path) => config?.url?.startsWith(path));
+    if (error.response?.status !== 401 || !config || config._retry || cannotRefresh) {
       return Promise.reject(error);
     }
     config._retry = true;
@@ -76,4 +77,3 @@ export function problemMessage(error: unknown): string {
   }
   return error instanceof Error ? error.message : "Something went wrong.";
 }
-
