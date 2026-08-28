@@ -13,8 +13,7 @@ public final class SecurityUtils {
     }
 
     public static boolean isAdmin(Authentication authentication) {
-        return authentication.getAuthorities().stream()
+        return authentication != null && authentication.getAuthorities().stream()
                 .anyMatch(authority -> authority.getAuthority().equals("ROLE_ADMIN"));
     }
 }
-

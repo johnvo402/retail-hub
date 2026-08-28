@@ -37,6 +37,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -369,6 +370,90 @@ class RetailHubIntegrationTest {
 
         assertThat(json(get("/api/inventory/" + productId, accessToken)).get("quantity").asInt()).isEqualTo(5);
         assertThat(inventoryMovements.countByProductId(productId)).isEqualTo(movementCount);
+    }
+
+    @Test
+    void productVisibilityIsEnforcedForListsDetailsCacheAndSearch() throws Exception {
+        String marker = "visibility" + UUID.randomUUID().toString().substring(0, 8);
+        String adminToken = json(post("/api/auth/login",
+                "{\"email\":\"admin@retailhub.test\",\"password\":\"Integration123!\"}", null, null))
+                .get("accessToken").asText();
+
+        String userEmail = marker + "@retailhub.test";
+        assertThat(post("/api/auth/register",
+                "{\"email\":\"" + userEmail + "\",\"password\":\"Integration123!\"}", null, null)
+                .statusCode()).isEqualTo(201);
+        String userToken = json(post("/api/auth/login",
+                "{\"email\":\"" + userEmail + "\",\"password\":\"Integration123!\"}", null, null))
+                .get("accessToken").asText();
+
+        UUID categoryId = UUID.fromString(json(post("/api/categories",
+                "{\"name\":\"" + marker + "\",\"description\":\"Visibility tests\",\"active\":true}",
+                adminToken, null)).get("id").asText());
+        UUID alphaId = createProduct(adminToken, categoryId, "Alpha " + marker,
+                "VIS-A-" + marker, "10.00");
+        UUID betaId = createProduct(adminToken, categoryId, "Beta " + marker,
+                "VIS-B-" + marker, "20.00");
+        UUID inactiveId = createProduct(adminToken, categoryId, "Hidden " + marker,
+                "VIS-H-" + marker, "15.00");
+        assertThat(put("/api/products/" + inactiveId,
+                objectMapper.writeValueAsString(new ProductPayload("Hidden " + marker,
+                        "Inactive visibility product", "VIS-H-" + marker, new BigDecimal("15.00"),
+                        categoryId, false)), adminToken).statusCode()).isEqualTo(204);
+
+        String filter = "keyword=" + marker + "&size=20";
+        assertThat(productIds(json(get("/api/products?" + filter, null))))
+                .containsExactlyInAnyOrder(alphaId, betaId);
+        assertThat(productIds(json(get("/api/products?active=false&" + filter, null))))
+                .containsExactlyInAnyOrder(alphaId, betaId);
+        assertThat(productIds(json(get("/api/products?active=false&" + filter, userToken))))
+                .containsExactlyInAnyOrder(alphaId, betaId);
+        assertThat(productIds(json(get("/api/products?" + filter, adminToken))))
+                .containsExactlyInAnyOrder(alphaId, betaId, inactiveId);
+        assertThat(productIds(json(get("/api/products?active=false&" + filter, adminToken))))
+                .containsExactly(inactiveId);
+
+        String combinedFilters = "category=" + categoryId + "&minPrice=9&maxPrice=25&keyword=" + marker
+                + "&sort=name,desc&size=20";
+        assertThat(productIds(json(get("/api/products?" + combinedFilters, null))))
+                .containsExactly(betaId, alphaId);
+
+        assertThat(get("/api/products/" + alphaId, null).statusCode()).isEqualTo(200);
+        assertThat(get("/api/products/" + alphaId, userToken).statusCode()).isEqualTo(200);
+
+        redis.delete("product:" + inactiveId);
+        assertThat(get("/api/products/" + inactiveId, adminToken).statusCode()).isEqualTo(200);
+        assertThat(redis.hasKey("product:" + inactiveId)).isTrue();
+        assertThat(get("/api/products/" + inactiveId, null).statusCode()).isEqualTo(404);
+        assertThat(get("/api/products/" + inactiveId, userToken).statusCode()).isEqualTo(404);
+        assertThat(redis.hasKey("product:" + inactiveId)).isTrue();
+
+        List<UUID> searchIds = List.of();
+        for (int attempt = 0; attempt < 15; attempt++) {
+            HttpResponse<String> response = get("/api/products/search?q=" + marker + "&size=20", null);
+            assertThat(response.statusCode()).isEqualTo(200);
+            searchIds = productIds(json(response));
+            if (searchIds.containsAll(List.of(alphaId, betaId))) {
+                break;
+            }
+            Thread.sleep(200);
+        }
+        assertThat(searchIds).contains(alphaId, betaId).doesNotContain(inactiveId);
+    }
+
+    private UUID createProduct(String accessToken, UUID categoryId, String name, String sku, String price)
+            throws Exception {
+        HttpResponse<String> response = post("/api/products",
+                objectMapper.writeValueAsString(new ProductPayload(name, name, sku, new BigDecimal(price),
+                        categoryId, true)), accessToken, null);
+        assertThat(response.statusCode()).isEqualTo(201);
+        return UUID.fromString(json(response).get("id").asText());
+    }
+
+    private static List<UUID> productIds(JsonNode page) {
+        List<UUID> ids = new ArrayList<>();
+        page.get("items").forEach(item -> ids.add(UUID.fromString(item.get("id").asText())));
+        return ids;
     }
 
     private JsonNode waitForSearch(String query) throws Exception {

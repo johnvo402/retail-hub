@@ -5,6 +5,5 @@ import com.johnvo.retailhub.application.features.catalog.common.ProductView;
 
 import java.util.UUID;
 
-public record GetProductQuery(UUID id) implements Query<ProductView> {
+public record GetProductQuery(UUID id, boolean includeInactive) implements Query<ProductView> {
 }
-

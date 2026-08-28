@@ -23,14 +23,21 @@ public class GetProductQueryHandler implements QueryHandler<GetProductQuery, Pro
     public Result<ProductView> handle(GetProductQuery query) {
         ProductView cached = cache.get(query.id()).orElse(null);
         if (cached != null) {
-            return Result.success(cached);
+            return visible(cached, query.includeInactive());
         }
         ProductView product = catalog.findProduct(query.id()).orElse(null);
-        if (product == null) {
+        Result<ProductView> visible = visible(product, query.includeInactive());
+        if (visible.isSuccess()) {
+            cache.put(product);
+        }
+        return visible;
+    }
+
+    private static Result<ProductView> visible(ProductView product, boolean includeInactive) {
+        if (product == null || (!product.active() && !includeInactive)) {
             return Result.failure(new ApplicationError(
                     "PRODUCT_NOT_FOUND", "Product was not found", ErrorType.NOT_FOUND));
         }
-        cache.put(product);
         return Result.success(product);
     }
 }

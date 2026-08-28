@@ -5,6 +5,7 @@ import com.johnvo.retailhub.application.common.Result;
 import com.johnvo.retailhub.application.common.cqrs.QueryHandler;
 import com.johnvo.retailhub.application.features.catalog.common.CatalogReadPort;
 import com.johnvo.retailhub.application.features.catalog.common.ProductView;
+import com.johnvo.retailhub.domain.catalog.ProductFilter;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,6 +18,10 @@ public class GetProductsQueryHandler implements QueryHandler<GetProductsQuery, P
 
     @Override
     public Result<PageResponse<ProductView>> handle(GetProductsQuery query) {
-        return Result.success(catalog.findProducts(query.filter()));
+        ProductFilter requested = query.filter();
+        ProductFilter effective = new ProductFilter(requested.categoryId(), requested.minPrice(),
+                requested.maxPrice(), query.includeInactive() ? requested.active() : Boolean.TRUE,
+                requested.keyword(), requested.page(), requested.size(), requested.sort());
+        return Result.success(catalog.findProducts(effective));
     }
 }

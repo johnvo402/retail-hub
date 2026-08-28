@@ -1,6 +1,7 @@
 package com.johnvo.retailhub.api.controller;
 
 import com.johnvo.retailhub.api.exception.ResultResponseMapper;
+import com.johnvo.retailhub.api.security.SecurityUtils;
 import com.johnvo.retailhub.application.features.catalog.command.createproduct.CreateProductCommand;
 import com.johnvo.retailhub.application.features.catalog.command.createproduct.CreateProductCommandHandler;
 import com.johnvo.retailhub.application.features.catalog.command.deleteproduct.DeleteProductCommand;
@@ -22,6 +23,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -76,14 +78,15 @@ public class ProductController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(defaultValue = "createdAt,desc") String sort) {
+            @RequestParam(defaultValue = "createdAt,desc") String sort,
+            Authentication authentication) {
         return results.ok(getProducts.handle(new GetProductsQuery(new ProductFilter(category, minPrice, maxPrice,
-                active, keyword, page, size, sort))));
+                active, keyword, page, size, sort), SecurityUtils.isAdmin(authentication))));
     }
 
     @GetMapping("/{id}")
-    ResponseEntity<?> get(@PathVariable UUID id) {
-        return results.ok(getProduct.handle(new GetProductQuery(id)));
+    ResponseEntity<?> get(@PathVariable UUID id, Authentication authentication) {
+        return results.ok(getProduct.handle(new GetProductQuery(id, SecurityUtils.isAdmin(authentication))));
     }
 
     @GetMapping("/search")
