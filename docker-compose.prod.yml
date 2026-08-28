@@ -3,119 +3,196 @@ name: retailhub-prod
 services:
   postgres:
     image: postgres:17.6-alpine
+    restart: unless-stopped
+
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-retailhub}
       POSTGRES_USER: ${POSTGRES_USER:-retailhub}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment file}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - retailhub-postgres-data:/var/lib/postgresql/data
+
     networks:
       - internal
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 10s
-    restart: unless-stopped
+
 
   redis:
     image: redis:8.2.1-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    restart: unless-stopped
+
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+
     volumes:
-      - redis_data:/data
+      - retailhub-redis-data:/data
+
     networks:
       - internal
+
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ]
       interval: 10s
       timeout: 3s
       retries: 12
-    restart: unless-stopped
+
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:9.3.3
+    restart: unless-stopped
+
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
+
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - retailhub-elasticsearch-data:/usr/share/elasticsearch/data
+
     networks:
       - internal
+
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"
+        ]
       interval: 15s
       timeout: 8s
       retries: 18
       start_period: 20s
-    restart: unless-stopped
+
 
   backend:
-    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable GHCR image tag}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-johnvo402}/retail-hub-backend:${IMAGE_TAG:-prod}
+
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+
+    restart: unless-stopped
+
     environment:
       SPRING_PROFILES_ACTIVE: prod
+
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-retailhub}
       DB_USERNAME: ${POSTGRES_USER:-retailhub}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment file}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+
       REDIS_HOST: redis
       REDIS_PORT: 6379
+
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET to a random value of at least 32 characters}
+
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET is required}
       JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION:-900}
+
       REFRESH_TOKEN_EXPIRATION: ${REFRESH_TOKEN_EXPIRATION:-1209600}
+
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-Strict}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      CORS_ALLOWED_ORIGIN: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN to the public HTTPS origin}
+
+      CORS_ALLOWED_ORIGIN: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN is required}
+
       PRODUCT_CACHE_TTL: ${PRODUCT_CACHE_TTL:-10m}
-      OPENAPI_ENABLED: "false"
+
+      OPENAPI_ENABLED: ${OPENAPI_ENABLED:-false}
+
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+
     expose:
       - "8080"
+
     networks:
       - internal
+
     depends_on:
       postgres:
         condition: service_healthy
+
       redis:
         condition: service_healthy
+
       elasticsearch:
         condition: service_healthy
+
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health/readiness || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://localhost:8080/actuator/health/readiness || exit 1"
+        ]
       interval: 10s
       timeout: 5s
       retries: 18
       start_period: 30s
+
     stop_grace_period: 30s
-    restart: unless-stopped
+
 
   frontend:
-    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to an immutable GHCR image tag}
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-johnvo402}/retail-hub-frontend:${IMAGE_TAG:-prod}
+
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+
+    restart: unless-stopped
+
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "${HTTP_PORT:-80}:80"
+
     networks:
       - edge
       - internal
+
     depends_on:
       backend:
         condition: service_healthy
+
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/ || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider http://127.0.0.1/ || exit 1"
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 10s
-    restart: unless-stopped
+
 
 networks:
   edge:
+
   internal:
     internal: true
 
+
 volumes:
-  postgres_data:
-  redis_data:
-  elasticsearch_data:
+  retailhub-postgres-data:
+  retailhub-redis-data:
+  retailhub-elasticsearch-data:
