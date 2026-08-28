@@ -112,6 +112,12 @@ HTTPS.
 │       ├── integration/
 │       └── setup/
 ├── design-system/
+├── scripts/
+│   ├── deploy.ps1
+│   └── rollback.ps1
+├── .github/workflows/
+│   ├── ci.yml
+│   └── deploy.yml
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── .env.example
@@ -158,34 +164,107 @@ To intentionally remove the project's named database/cache/index volumes as well
 docker compose down --volumes
 ```
 
-## Production Docker Compose
+## CI/CD and production deployment
 
-The production stack publishes only the frontend port. Nginx serves the React
-application and proxies `/api` to the backend across Docker's private network.
-PostgreSQL, Redis, Elasticsearch, and the backend have no host port mappings.
+Pull requests and pushes to `main` run `.github/workflows/ci.yml`: Maven `verify`,
+frontend tests, and the frontend production build. Pull requests never deploy.
+After CI succeeds for a `main` push, `.github/workflows/deploy.yml` builds the backend
+and frontend with BuildKit caching and pushes only immutable commit-SHA tags to GHCR:
 
-Create the production environment file and replace every blank secret and the
-example public origin before starting:
-
-```powershell
-Copy-Item .env.production.example .env.production
-# Edit .env.production: POSTGRES_PASSWORD, JWT_ACCESS_SECRET, and PUBLIC_ORIGIN
-
-docker compose --env-file .env.production -f docker-compose.prod.yml config
-docker compose --env-file .env.production -f docker-compose.prod.yml up --build -d
-docker compose --env-file .env.production -f docker-compose.prod.yml ps
+```text
+ghcr.io/johnvo402/retail-hub-backend:<40-character-git-sha>
+ghcr.io/johnvo402/retail-hub-frontend:<40-character-git-sha>
 ```
 
-The application is available on `FRONTEND_PORT` (port `80` by default), and backend
-health is reachable through the same public origin at `/api/health`. Put this port
-behind an HTTPS load balancer or reverse proxy; production defaults to
-`COOKIE_SECURE=true`, so authentication cookies require HTTPS.
+The deploy job runs on the production Windows machine through a self-hosted GitHub
+Actions runner. This matches the existing PowerShell-based production operation,
+does not require inbound SSH, and keeps `.env.production` on the server. The job is
+serialized by the `retailhub-production` concurrency group and skips a commit if a
+newer `main` commit has already superseded it.
 
-Stop the production stack without deleting persistent data:
+Production Compose pulls the exact SHA images; it never builds application source on
+the server. Only the frontend port is published. Nginx proxies `/api` to the backend
+on the private Docker network, and PostgreSQL, Redis, Elasticsearch, and the backend
+have no host port mappings. Local development remains unchanged and continues to use
+`docker-compose.yml` with local image builds.
+
+### One-time production setup
+
+The production server requires Docker Engine or Docker Desktop with Compose v2, Git,
+and a GitHub Actions self-hosted runner running under an account allowed to use
+Docker. Register that runner for this repository with the standard `self-hosted`,
+`Windows`, and `X64` labels plus a custom `production` label.
+
+Create the GitHub Environment `production`. It does not need approval unless desired.
+Add one environment variable (not a secret) named `PRODUCTION_ENV_FILE` containing an
+absolute server path outside the runner checkout, for example
+`C:\retailhub\config\.env.production`. Keeping it outside the checkout prevents
+`actions/checkout` cleanup from deleting it.
+
+On the server, copy `.env.production.example` to that path and set at least:
+
+- `POSTGRES_PASSWORD`: a strong unique database password
+- `JWT_ACCESS_SECRET`: a random value of at least 32 characters
+- `PUBLIC_ORIGIN`: the externally reachable HTTPS origin
+- optional `ADMIN_EMAIL` and `ADMIN_PASSWORD` only for initial administrator bootstrap
+
+Do not add this file to Git. Repository secrets are not required for GHCR: the
+workflow uses the scoped built-in `GITHUB_TOKEN` with `packages: write` only while
+building and `packages: read` while deploying. If GHCR packages are private, ensure
+the repository and runner job have access to those packages.
+
+### First and future deployments
+
+Push or merge to `main`. CI must pass before images are built. The deployment runner
+then logs in to GHCR, pulls both images for that exact commit, and executes:
 
 ```powershell
-docker compose --env-file .env.production -f docker-compose.prod.yml down
+.\scripts\deploy.ps1 `
+  -Sha <40-character-git-sha> `
+  -EnvFile C:\retailhub\config\.env.production
 ```
+
+The script validates Compose configuration, runs `docker compose pull`, and uses
+`docker compose up -d` without a preceding `down`. Unchanged infrastructure is not
+recreated, and the named `postgres_data`, `redis_data`, and `elasticsearch_data`
+volumes remain attached. Flyway continues to run during backend startup before
+readiness succeeds. The script waits for every container health check and then checks
+`<PUBLIC_ORIGIN>/api/health` through the public frontend path.
+
+For a manual deployment, check out the desired repository revision, authenticate the
+server to GHCR using a credential with package read access, and run the same command.
+Never use a mutable `latest` tag as a deployment identity.
+
+Inspect a deployment without printing environment values:
+
+```powershell
+docker compose --env-file C:\retailhub\config\.env.production -f docker-compose.prod.yml ps
+docker compose --env-file C:\retailhub\config\.env.production -f docker-compose.prod.yml logs --tail 100 backend frontend
+Invoke-WebRequest https://retailhub.example.com/api/health -UseBasicParsing
+```
+
+### Failed deployment and rollback
+
+If application or public health checks fail, `deploy.ps1` prints container status and
+at most 100 recent backend/frontend log lines, restores the image references captured
+before deployment, runs Compose again, and verifies rollback health. The workflow
+still exits as failed so GitHub records the unsuccessful release. On the very first
+deployment there are no prior application containers to restore.
+
+To roll back deliberately, select a previously successful commit SHA from the GHCR
+package or Git history and run:
+
+```powershell
+.\scripts\rollback.ps1 `
+  -Sha <previous-successful-40-character-git-sha> `
+  -EnvFile C:\retailhub\config\.env.production
+```
+
+Rollback pulls and deploys both artifacts from the same commit, then performs the
+same readiness and public health checks. Normal deployment and rollback never run
+`docker compose down -v`, delete named volumes, reset PostgreSQL, or invoke Flyway
+clean. HTTPS termination remains required because production authentication cookies
+default to `Secure`.
 
 ## Run infrastructure in Docker and apps on the host
 

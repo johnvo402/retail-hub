@@ -52,9 +52,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: retailhub-backend:${RETAILHUB_VERSION:-latest}
-    build:
-      context: ./backend
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE to an immutable GHCR image tag}
     environment:
       SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-retailhub}
@@ -95,11 +93,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: retailhub-frontend:${RETAILHUB_VERSION:-latest}
-    build:
-      context: ./frontend
-      args:
-        VITE_API_URL: /api
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE to an immutable GHCR image tag}
     ports:
       - "${FRONTEND_PORT:-80}:80"
     networks:
