@@ -14,7 +14,10 @@ export default function ProductDetailPage() {
   const queryClient = useQueryClient();
   const product = useQuery({ queryKey: ["product", id], queryFn: () => getProduct(id), enabled: !!id });
   const remove = useMutation({ mutationFn: () => deleteProduct(id), onSuccess: async () => {
-    await queryClient.invalidateQueries({ queryKey: ["products"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["products"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
     navigate("/products");
   }});
 
@@ -48,4 +51,3 @@ export default function ProductDetailPage() {
     </section>
   </div>;
 }
-

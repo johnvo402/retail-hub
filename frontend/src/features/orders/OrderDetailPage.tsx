@@ -18,7 +18,11 @@ export default function OrderDetailPage() {
   const products = useQuery({ queryKey: ["products", "order-picker"], queryFn: () => listProducts({ active: true }) });
   useQuery({ queryKey: ["categories"], queryFn: getCategories });
   const refresh = async () => {
-    await Promise.all([queryClient.invalidateQueries({ queryKey: ["order", id] }), queryClient.invalidateQueries({ queryKey: ["orders"] })]);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["order", id] }),
+      queryClient.invalidateQueries({ queryKey: ["orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
   };
   const add = useMutation({ mutationFn: () => addOrderItem(id, productId, quantity), onSuccess: async () => {
     setProductId(""); setQuantity(1); await refresh();

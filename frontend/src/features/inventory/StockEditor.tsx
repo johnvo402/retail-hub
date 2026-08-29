@@ -19,6 +19,7 @@ export function StockEditor({ item }: { item: InventoryItem }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["inventory"] }),
         queryClient.invalidateQueries({ queryKey: ["inventory-movements", item.productId] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
     },
   });

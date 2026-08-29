@@ -26,6 +26,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -63,6 +64,7 @@ class RetailHubIntegrationTest {
     @Autowired IncreaseStockCommandHandler increaseStock;
     @Autowired SpringDataInventoryMovementRepository inventoryMovements;
     @Autowired EntityManagerFactory entityManagerFactory;
+    @Autowired JdbcTemplate jdbc;
 
     private final HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
@@ -441,6 +443,172 @@ class RetailHubIntegrationTest {
         assertThat(searchIds).contains(alphaId, betaId).doesNotContain(inactiveId);
     }
 
+    @Test
+    void dashboardOverviewUsesDatabaseWideAggregatesAndPreservesOrderScope() throws Exception {
+        assertThat(get("/api/dashboard/overview", null).statusCode()).isEqualTo(401);
+
+        String marker = "dashboard" + UUID.randomUUID().toString().substring(0, 8);
+        String adminToken = json(post("/api/auth/login",
+                "{\"email\":\"admin@retailhub.test\",\"password\":\"Integration123!\"}", null, null))
+                .get("accessToken").asText();
+        AuthenticatedUser firstUser = registerAndLogin(marker + "-one@retailhub.test");
+        AuthenticatedUser secondUser = registerAndLogin(marker + "-two@retailhub.test");
+        JsonNode before = json(get("/api/dashboard/overview", adminToken));
+
+        UUID categoryId = UUID.fromString(json(post("/api/categories",
+                "{\"name\":\"" + marker + "\",\"description\":\"Dashboard aggregate tests\",\"active\":true}",
+                adminToken, null)).get("id").asText());
+        List<UUID> productIds = seedDashboardInventory(categoryId, marker);
+
+        Instant oldBase = Instant.now().minusSeconds(100_000);
+        Instant recentBase = Instant.now().plusSeconds(3_600);
+        List<UUID> firstUserOrders = new ArrayList<>();
+        List<UUID> secondUserOrders = new ArrayList<>();
+        BigDecimal firstUserConfirmedValue = BigDecimal.ZERO;
+        BigDecimal secondUserConfirmedValue = BigDecimal.ZERO;
+        UUID firstRecentDraft = null;
+        UUID firstLatestDraft = null;
+        UUID firstRecentConfirmed = null;
+        UUID secondRecentDraft = null;
+        UUID secondRecentConfirmed = null;
+
+        for (int index = 0; index < 35; index++) {
+            Instant createdAt = index == 33 ? recentBase.plusSeconds(1)
+                    : index == 34 ? recentBase.plusSeconds(3) : oldBase.plusSeconds(index);
+            UUID orderId = seedDashboardOrder(firstUser.id(), productIds.get(0), "DRAFT",
+                    BigDecimal.ZERO, createdAt);
+            firstUserOrders.add(orderId);
+            if (index == 33) firstRecentDraft = orderId;
+            if (index == 34) firstLatestDraft = orderId;
+        }
+        for (int index = 0; index < 25; index++) {
+            BigDecimal unitPrice = BigDecimal.valueOf(10L + index);
+            Instant createdAt = index == 24 ? recentBase.plusSeconds(5)
+                    : oldBase.plusSeconds(100L + index);
+            UUID orderId = seedDashboardOrder(firstUser.id(), productIds.get(0), "CONFIRMED",
+                    unitPrice, createdAt);
+            firstUserOrders.add(orderId);
+            firstUserConfirmedValue = firstUserConfirmedValue.add(unitPrice.multiply(BigDecimal.valueOf(2)));
+            if (index == 24) firstRecentConfirmed = orderId;
+        }
+        for (int index = 0; index < 3; index++) {
+            Instant createdAt = index == 2 ? recentBase.plusSeconds(2)
+                    : oldBase.plusSeconds(200L + index);
+            UUID orderId = seedDashboardOrder(secondUser.id(), productIds.get(0), "DRAFT",
+                    BigDecimal.ZERO, createdAt);
+            secondUserOrders.add(orderId);
+            if (index == 2) secondRecentDraft = orderId;
+        }
+        for (int index = 0; index < 2; index++) {
+            BigDecimal unitPrice = BigDecimal.valueOf(5L + index);
+            Instant createdAt = index == 1 ? recentBase.plusSeconds(4)
+                    : oldBase.plusSeconds(300L + index);
+            UUID orderId = seedDashboardOrder(secondUser.id(), productIds.get(0), "CONFIRMED",
+                    unitPrice, createdAt);
+            secondUserOrders.add(orderId);
+            secondUserConfirmedValue = secondUserConfirmedValue.add(unitPrice.multiply(BigDecimal.valueOf(2)));
+            if (index == 1) secondRecentConfirmed = orderId;
+        }
+
+        JsonNode userOverview = json(get("/api/dashboard/overview", firstUser.accessToken()));
+        assertThat(userOverview.get("draftOrderCount").asLong()).isEqualTo(35);
+        assertThat(userOverview.get("confirmedOrderCount").asLong()).isEqualTo(25);
+        assertThat(userOverview.get("confirmedOrderValue").decimalValue())
+                .isEqualByComparingTo(firstUserConfirmedValue);
+        assertThat(ids(userOverview.get("recentOrders")))
+                .hasSize(5)
+                .allMatch(firstUserOrders::contains)
+                .doesNotContainAnyElementsOf(secondUserOrders);
+
+        JsonNode adminOverview = json(get("/api/dashboard/overview", adminToken));
+        assertThat(adminOverview.get("activeProductCount").asLong())
+                .isEqualTo(before.get("activeProductCount").asLong() + 29);
+        assertThat(adminOverview.get("inventoryLineCount").asLong())
+                .isEqualTo(before.get("inventoryLineCount").asLong() + 30);
+        assertThat(adminOverview.get("lowStockCount").asLong())
+                .isEqualTo(before.get("lowStockCount").asLong() + 12);
+        assertThat(adminOverview.get("draftOrderCount").asLong())
+                .isEqualTo(before.get("draftOrderCount").asLong() + 38);
+        assertThat(adminOverview.get("confirmedOrderCount").asLong())
+                .isEqualTo(before.get("confirmedOrderCount").asLong() + 27);
+        assertThat(adminOverview.get("confirmedOrderValue").decimalValue())
+                .isEqualByComparingTo(before.get("confirmedOrderValue").decimalValue()
+                        .add(firstUserConfirmedValue).add(secondUserConfirmedValue));
+        assertThat(ids(adminOverview.get("recentOrders"))).containsExactly(
+                firstRecentConfirmed, secondRecentConfirmed, firstLatestDraft,
+                secondRecentDraft, firstRecentDraft);
+
+        JsonNode lowStockItems = adminOverview.get("lowStockItems");
+        assertThat(lowStockItems).hasSize(6);
+        for (int index = 0; index < lowStockItems.size(); index++) {
+            assertThat(lowStockItems.get(index).get("quantity").asInt()).isLessThan(5);
+            if (index == 0) continue;
+            JsonNode previous = lowStockItems.get(index - 1);
+            JsonNode current = lowStockItems.get(index);
+            int previousQuantity = previous.get("quantity").asInt();
+            int currentQuantity = current.get("quantity").asInt();
+            assertThat(previousQuantity).isLessThanOrEqualTo(currentQuantity);
+            if (previousQuantity == currentQuantity) {
+                assertThat(previous.get("productName").asText()
+                        .compareTo(current.get("productName").asText())).isLessThanOrEqualTo(0);
+            }
+        }
+    }
+
+    private AuthenticatedUser registerAndLogin(String email) throws Exception {
+        assertThat(post("/api/auth/register",
+                "{\"email\":\"" + email + "\",\"password\":\"Integration123!\"}", null, null)
+                .statusCode()).isEqualTo(201);
+        JsonNode login = json(post("/api/auth/login",
+                "{\"email\":\"" + email + "\",\"password\":\"Integration123!\"}", null, null));
+        return new AuthenticatedUser(UUID.fromString(login.get("user").get("id").asText()),
+                login.get("accessToken").asText());
+    }
+
+    private List<UUID> seedDashboardInventory(UUID categoryId, String marker) {
+        List<UUID> productIds = new ArrayList<>();
+        java.sql.Timestamp now = java.sql.Timestamp.from(Instant.now());
+        for (int index = 0; index < 30; index++) {
+            UUID productId = UUID.randomUUID();
+            boolean active = index != 29;
+            int quantity = index < 12 ? index / 3 : index == 12 ? 5 : 10;
+            jdbc.update("""
+                    INSERT INTO products
+                        (id, category_id, name, description, sku, price, active, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, productId, categoryId, String.format("Dashboard %02d %s", index, marker),
+                    "Dashboard aggregate test", "DASH-" + marker + "-" + index,
+                    BigDecimal.valueOf(index + 1L), active, now, now);
+            jdbc.update("""
+                    INSERT INTO inventory_items (product_id, quantity, version, updated_at)
+                    VALUES (?, ?, 0, ?)
+                    """, productId, quantity, now);
+            productIds.add(productId);
+        }
+        return productIds;
+    }
+
+    private UUID seedDashboardOrder(UUID customerId, UUID productId, String status,
+                                    BigDecimal unitPrice, Instant createdAt) {
+        UUID orderId = UUID.randomUUID();
+        java.sql.Timestamp timestamp = java.sql.Timestamp.from(createdAt);
+        java.sql.Timestamp confirmedAt = status.equals("CONFIRMED") ? timestamp : null;
+        jdbc.update("""
+                INSERT INTO orders
+                    (id, customer_id, status, created_at, updated_at, confirmed_at, cancelled_at, version)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, 0)
+                """, orderId, customerId, status, timestamp, timestamp, confirmedAt);
+        if (status.equals("CONFIRMED")) {
+            jdbc.update("""
+                    INSERT INTO order_items
+                        (id, order_id, product_id, product_name, sku, unit_price, quantity)
+                    VALUES (?, ?, ?, ?, ?, ?, 2)
+                    """, UUID.randomUUID(), orderId, productId, "Dashboard product",
+                    "DASH-ORDER", unitPrice);
+        }
+        return orderId;
+    }
+
     private UUID createProduct(String accessToken, UUID categoryId, String name, String sku, String price)
             throws Exception {
         HttpResponse<String> response = post("/api/products",
@@ -451,8 +619,12 @@ class RetailHubIntegrationTest {
     }
 
     private static List<UUID> productIds(JsonNode page) {
+        return ids(page.get("items"));
+    }
+
+    private static List<UUID> ids(JsonNode items) {
         List<UUID> ids = new ArrayList<>();
-        page.get("items").forEach(item -> ids.add(UUID.fromString(item.get("id").asText())));
+        items.forEach(item -> ids.add(UUID.fromString(item.get("id").asText())));
         return ids;
     }
 
@@ -524,5 +696,8 @@ class RetailHubIntegrationTest {
 
     record ProductPayload(String name, String description, String sku, BigDecimal price,
                           UUID categoryId, boolean active) {
+    }
+
+    record AuthenticatedUser(UUID id, String accessToken) {
     }
 }

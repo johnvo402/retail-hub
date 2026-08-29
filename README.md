@@ -349,11 +349,17 @@ JPA optimistic concurrency.
 | Categories | `/api/categories`, `/api/categories/{id}`                                                     |
 | Inventory  | `/api/inventory`, `/api/inventory/{productId}`, `movements`, `increase`, `decrease`           |
 | Orders     | `/api/orders`, `/api/orders/{id}`, item add/remove, `confirm`, `cancel`                       |
+| Dashboard  | `/api/dashboard/overview`                                                                     |
 
 Product/category writes and manual inventory adjustments require `ADMIN`; catalog
 reads are public; inventory reads and orders require a JWT. Errors use one Problem Details-style shape with type, title,
 status, detail, optional field errors, and a trace ID. Swagger is enabled by default
 for development and disabled by `application-prod.yml`.
+
+The authenticated dashboard overview uses database aggregates rather than paginated
+API pages. Catalog and inventory metrics are global; order counts, confirmed order
+value, and recent orders are customer-scoped for `USER` and global for `ADMIN`.
+Low stock means `quantity < 5`, while the preview returns at most six rows.
 
 ## Environment variables
 

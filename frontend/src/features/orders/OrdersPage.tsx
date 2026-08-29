@@ -15,7 +15,11 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   const orders = useQuery({ queryKey: ["orders", { page }], queryFn: () => listOrders(page), placeholderData: keepPreviousData });
   const create = useMutation({ mutationFn: createOrder, onSuccess: async ({ id }) => {
-    await queryClient.invalidateQueries({ queryKey: ["orders"] }); navigate(`/orders/${id}`);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
+    navigate(`/orders/${id}`);
   }});
 
   return <div className="page-stack">
@@ -43,4 +47,3 @@ export default function OrdersPage() {
       </>}
   </div>;
 }
-

@@ -51,7 +51,10 @@ export default function ProductFormPage() {
       return createProduct(values);
     },
     onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ["products"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["products"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
       navigate(`/products/${result.id}`);
     },
   });
